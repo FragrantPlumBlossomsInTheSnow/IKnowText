@@ -17,13 +17,13 @@ public class TextClassifier
         // Priority order matters - more specific types first
         _detectors =
         [
+            new JwtDetector(), // JWTs can also have the shape of a bare domain.
             new UrlDetector(),
             new EmailDetector(),
             new FilePathDetector(),
             new JsonDetector(),
             new XmlHtmlDetector(),
             new UuidDetector(),
-            new JwtDetector(),
             new IpAddressDetector(),
             new ColorCodeDetector(),
             new Base64Detector(),

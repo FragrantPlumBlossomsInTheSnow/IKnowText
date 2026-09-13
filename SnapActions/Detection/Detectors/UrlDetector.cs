@@ -12,6 +12,10 @@ public partial class UrlDetector : ITextDetector
     [GeneratedRegex(@"^(https?://\S+|ftp://\S+|www\.[A-Za-z0-9\-]+\.[A-Za-z0-9\-]{2,}\S*)", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
 
+    // Bare domains must fill the selection. Keep www-prefixed hosts on the rule above.
+    [GeneratedRegex(@"\A(?!www\.)(?:[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}(?::[0-9]{1,5})?(?:[/?#]\S*)?\z", RegexOptions.IgnoreCase)]
+    private static partial Regex BareDomainPattern();
+
     public bool TryDetect(string text, out TextAnalysis result)
     {
         result = default!;
@@ -21,7 +25,9 @@ public partial class UrlDetector : ITextDetector
         // would feed a multi-line string to the shell.
         if (trimmed.Contains('\n')) return false;
 
-        if (UrlPattern().IsMatch(trimmed) || Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
+        if (UrlPattern().IsMatch(trimmed)
+            || BareDomainPattern().IsMatch(trimmed) && Uri.TryCreate("https://" + trimmed, UriKind.Absolute, out _)
+            || Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
             && (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "ftp"))
         {
             result = new TextAnalysis(TextType.Url, 0.95, new() { ["url"] = trimmed });

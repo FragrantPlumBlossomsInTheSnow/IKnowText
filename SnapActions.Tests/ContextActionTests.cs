@@ -22,12 +22,32 @@ public class ContextActionTests
     [InlineData("http://example.com")]
     [InlineData("ftp://files.example.com")] // regression: B1 in v1.5.3 — used to break ftp
     [InlineData("www.example.com")]
+    [InlineData("youtube.com")]
+    [InlineData("  youtube.com  ")]
+    [InlineData("youtube.com/watch?v=abc123")]
+    [InlineData("sub-domain.example.co.uk:8443/path?q=1")]
     public void OpenUrl_CanExecuteOnAllUrlSchemes(string text)
     {
         var action = new OpenUrlAction();
         var analysis = Classify(text);
         Assert.Equal(TextType.Url, analysis.Type);
         Assert.True(action.CanExecute(text, analysis));
+    }
+
+    [Theory]
+    [InlineData("youtube.com", "https://youtube.com")]
+    [InlineData("  youtube.com  ", "https://youtube.com")]
+    [InlineData("www.example.com", "https://www.example.com")]
+    [InlineData("example.com:8443/path?q=1#details", "https://example.com:8443/path?q=1#details")]
+    [InlineData("youtube.com/redirect?q=https://example.com", "https://youtube.com/redirect?q=https://example.com")]
+    [InlineData("https://youtube.com", "https://youtube.com")]
+    [InlineData("http://example.com", "http://example.com")]
+    [InlineData("HTTPS://example.com", "HTTPS://example.com")]
+    [InlineData("ftp://files.example.com", "ftp://files.example.com")]
+    public void OpenUrl_BuildUrlPreservesExplicitSchemesAndNormalizesBareDomains(string text, string expected)
+    {
+        Assert.Equal(TextType.Url, Classify(text).Type);
+        Assert.Equal(expected, OpenUrlAction.BuildUrl(text));
     }
 
     // ── DictionaryAction.CanExecute (tightened in v1.5.3 B11) ────

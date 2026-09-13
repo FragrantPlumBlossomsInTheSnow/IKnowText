@@ -12,13 +12,16 @@ public class OpenUrlAction : IAction
 
     public bool CanExecute(string text, TextAnalysis analysis) => analysis.Type == TextType.Url;
 
-    public ActionResult Execute(string text, TextAnalysis analysis)
+    public ActionResult Execute(string text, TextAnalysis analysis) =>
+        ProcessHelper.TryShellOpen(BuildUrl(text), "Opened in browser");
+
+    internal static string BuildUrl(string text)
     {
         var url = text.Trim();
-        // Don't blindly prepend https:// — the detector also accepts ftp:// and bare www.host.
-        // Only prepend when the selection has no scheme of its own.
-        if (!url.Contains("://", StringComparison.Ordinal))
+        // Don't blindly prepend https:// — the detector accepts ftp:// as well as bare domains.
+        // A scheme inside a path or query does not belong to the selected URL itself.
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https" or "ftp"))
             url = "https://" + url;
-        return ProcessHelper.TryShellOpen(url, "Opened in browser");
+        return url;
     }
 }

@@ -17,6 +17,14 @@ public class DetectorTests
     [InlineData("http://example.com/path?q=1")]
     [InlineData("ftp://files.example.com/")]
     [InlineData("www.example.com")]
+    [InlineData("youtube.com")]
+    [InlineData("YouTube.com")]
+    [InlineData("x.com")]
+    [InlineData("  youtube.com  ")]
+    [InlineData("youtube.com/watch?v=abc123&t=30#details")]
+    [InlineData("youtube.com?feature=shared")]
+    [InlineData("youtube.com#details")]
+    [InlineData("sub-domain.example.co.uk:8443/path?q=1")]
     public void Url_Matches(string text) => Assert.Equal(TextType.Url, Classify(text));
 
     [Fact]
@@ -35,6 +43,23 @@ public class DetectorTests
     [InlineData("www.x")]           // regression: B15 in v1.6.3 — single-letter host with no TLD
     [InlineData("www.example")]     // host with no TLD
     public void Url_RejectsBareWwwHostWithoutTld(string text) =>
+        Assert.NotEqual(TextType.Url, Classify(text));
+
+    [Theory]
+    [InlineData("visit youtube.com")]
+    [InlineData("youtube.com more text")]
+    [InlineData("youtube.com\tmore")]
+    [InlineData("youtube.com\rmore")]
+    [InlineData("youtube.com\nmore")]
+    [InlineData("youtube..com")]
+    [InlineData("-youtube.com")]
+    [InlineData("youtube-.com")]
+    [InlineData("youtube.c")]
+    [InlineData("youtube.123")]
+    [InlineData("youtube.com:65536")]
+    [InlineData("youtube.com:abc")]
+    [InlineData(@"youtube.com\watch")]
+    public void Url_RejectsMalformedBareDomain(string text) =>
         Assert.NotEqual(TextType.Url, Classify(text));
 
     // ── Email ────────────────────────────────────────────────────

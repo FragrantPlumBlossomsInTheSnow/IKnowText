@@ -17,7 +17,7 @@ This reference covers everyday actions, settings, compatibility and development.
 Select text anywhere — drag-select, double-click a word, triple-click a line. A floating toolbar appears above the cursor with actions tailored to what you picked.
 
 ```
-Select  https://example.com           →  Open, clean tracking links, search
+Select  youtube.com                   →  Open URL, search
 Select  2+3*4                         →  Calculate (= 14)
 Select  5 ft                          →  Convert (1.524 m | 60 in | 1.667 yd | …)
 Select  #89B4FA                       →  Preview color (with swatch), cycle to rgb/hsl
@@ -42,7 +42,7 @@ Mixed Arabic/English hover previews use the browser selection's text direction w
 
 | Type | Example | Actions |
 |---|---|---|
-| URL | `https://example.com`, `ftp://files.example.com` | Open, clean tracking links |
+| URL | `youtube.com`, `www.example.com`, `https://example.com`, `ftp://files.example.com` | Open, clean tracking links |
 | Email | `user@example.com` | Send via mailto |
 | File path | `C:\folder\file.txt`, `\\server\share\file` | Open file, reveal in Explorer |
 | JSON | `{"key":"val"}`, `[1, 2, 3]` | Format, minify |
@@ -56,6 +56,8 @@ Mixed Arabic/English hover previews use the browser selection's text direction w
 | Currency | `$33`, `100 SAR`, `€1,500.50`, `€1.500,50` | Convert (handles American & European number formats) |
 | JWT | `eyJhbGciOiJI...`, including `alg=none` unsigned tokens | Decode header / payload / signature |
 | Unit | `5 ft`, `100 km/h`, `5 fl oz`, `20°C`, `2 cups` | Convert to all common units |
+
+Bare domains can include a path, port, query or fragment. **Open URL** adds `https://` when the selection has no scheme.
 
 XML formatting rejects DTD declarations and limits input to 32,768 characters and formatted output to 65,536 characters, including indentation.
 
