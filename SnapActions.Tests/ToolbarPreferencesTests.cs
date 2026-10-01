@@ -12,21 +12,21 @@ public class ToolbarPreferencesTests
     [Fact]
     public void PinningHiddenActionShowsItAndKeepsExistingOrder()
     {
-        var settings = new AppSettings { PinnedActionIds = ["case_upper", "delete_text"], DisabledActionIds = ["paste_plain"] };
-        ToolbarPreferences.Pin(settings, Action("paste_plain"), "delete_text");
-        Assert.Equal(["case_upper", "paste_plain", "delete_text"], settings.PinnedActionIds);
-        Assert.DoesNotContain("paste_plain", settings.DisabledActionIds);
+        var settings = new AppSettings { PinnedActionIds = ["case_upper", "ws_trim"], DisabledActionIds = ["case_snake"] };
+        ToolbarPreferences.Pin(settings, Action("case_snake"), "ws_trim");
+        Assert.Equal(["case_upper", "case_snake", "ws_trim"], settings.PinnedActionIds);
+        Assert.DoesNotContain("case_snake", settings.DisabledActionIds);
     }
 
     [Theory]
-    [InlineData("case_upper", "paste_plain", true, "delete_text,paste_plain,case_upper")]
-    [InlineData("paste_plain", "case_upper", false, "paste_plain,case_upper,delete_text")]
-    [InlineData("case_upper", "delete_text", true, "delete_text,case_upper,paste_plain")]
-    [InlineData("delete_text", "delete_text", true, "case_upper,delete_text,paste_plain")]
-    [InlineData("case_upper", null, false, "delete_text,paste_plain,case_upper")]
+    [InlineData("case_upper", "case_snake", true, "ws_trim,case_snake,case_upper")]
+    [InlineData("case_snake", "case_upper", false, "case_snake,case_upper,ws_trim")]
+    [InlineData("case_upper", "ws_trim", true, "ws_trim,case_upper,case_snake")]
+    [InlineData("ws_trim", "ws_trim", true, "case_upper,ws_trim,case_snake")]
+    [InlineData("case_upper", null, false, "ws_trim,case_snake,case_upper")]
     public void DropPositionReordersWithoutDuplicates(string id, string? target, bool after, string expected)
     {
-        var settings = new AppSettings { PinnedActionIds = ["case_upper", "delete_text", "paste_plain"] };
+        var settings = new AppSettings { PinnedActionIds = ["case_upper", "ws_trim", "case_snake"] };
         ToolbarPreferences.Pin(settings, Action(id), target, after);
         Assert.Equal(expected.Split(','), settings.PinnedActionIds);
     }
@@ -34,13 +34,13 @@ public class ToolbarPreferencesTests
     [Fact]
     public void HideAndShowKeepTheSavedPinPosition()
     {
-        var settings = new AppSettings { PinnedActionIds = ["delete_text", "paste_plain"] };
-        var action = Action("delete_text");
+        var settings = new AppSettings { PinnedActionIds = ["case_upper", "ws_trim"] };
+        var action = Action("case_upper");
         ToolbarPreferences.SetHidden(settings, action, true);
         Assert.True(ToolbarPreferences.IsHidden(settings, action));
         ToolbarPreferences.SetHidden(settings, action, false);
         Assert.False(ToolbarPreferences.IsHidden(settings, action));
-        Assert.Equal(["delete_text", "paste_plain"], settings.PinnedActionIds);
+        Assert.Equal(["case_upper", "ws_trim"], settings.PinnedActionIds);
     }
 
     [Fact]
@@ -61,10 +61,10 @@ public class ToolbarPreferencesTests
     }
 
     [Fact]
-    public void RetiredActionsArePrunedWithoutLosingPasteAndDelete()
+    public void RetiredActionsArePrunedWithoutLosingPinnedActions()
     {
-        var settings = SettingsManager.Parse("""{"PinnedActionIds":["generate_qr","inspect_text","delete_text","paste_plain"],"DisabledActionIds":["generate_qr","inspect_text"]}""");
-        Assert.Equal(["delete_text", "paste_plain"], settings.PinnedActionIds);
+        var settings = SettingsManager.Parse("""{"PinnedActionIds":["generate_qr","inspect_text","case_upper","case_snake"],"DisabledActionIds":["generate_qr","inspect_text"]}""");
+        Assert.Equal(["case_upper", "case_snake"], settings.PinnedActionIds);
         Assert.Empty(settings.DisabledActionIds);
         var ids = new ActionRegistry().AllActionDescriptors().Select(a => a.Id).ToList();
         Assert.DoesNotContain("generate_qr", ids);

@@ -16,7 +16,7 @@ internal static class ActionRunner
         {
             if (!await operation.CanUseSelectionAsync())
             {
-                Log.Info($"Action selection validation rejected (provider: {selection.Provider}, operation current: {operation.IsCurrent})");
+                Log.Info($"操作选择验证被拒绝 (提供者: {selection.Provider}, 当前操作: {operation.IsCurrent})");
                 return Cancelled();
             }
             if (action is IOperationAction targeted)
@@ -30,8 +30,8 @@ internal static class ActionRunner
         }
         catch (Exception ex)
         {
-            Log.Warn($"Action failed ({ex.GetType().Name})");
-            return new(false, Message: "The action could not be completed.");
+            Log.Warn($"操作失败 ({ex.GetType().Name})");
+            return new(false, Message: "无法完成该操作。");
         }
     }
 
@@ -39,8 +39,14 @@ internal static class ActionRunner
     {
         var operation = selection.Operation;
         bool paste = destination == ResultDestination.Replace;
-        if (!await operation.CanUseSelectionAsync()) return Cancelled();
-        if (paste && (!selection.CanReplace || !await InputExecutor.PreparePasteAsync(operation))) return Cancelled();
+        // 不做"选区可编辑"判断（CanReplace）：合成键捕获的目标往往判不出可编辑性，
+        // 前置拦截会让替换永远失败。能否注入由窗口级校验 + 目标应用决定（同翻译替换）。
+        if (!await operation.CanUseSelectionAsync())
+        {
+            Log.Warn("Apply replace failed: selection validation rejected up front");
+            return Cancelled();
+        }
+        if (paste && !await InputExecutor.PreparePasteForReplaceAsync(operation)) return Cancelled();
         bool restoreAfterCopy = !paste && Config.SettingsManager.Current.RestoreClipboardAfterAction;
         ClipboardTransaction.ClipboardSnapshot? previous = null;
         ClipboardTransaction.ClipboardObservation? written = null;
@@ -50,50 +56,62 @@ internal static class ActionRunner
             if (paste || restoreAfterCopy)
             {
                 previous = ClipboardTransaction.SnapshotClipboard();
-                if (previous == null) return new(false, Message: "Clipboard formats couldn't be preserved safely")
-                    { CanRetry = !paste && operation.IsCurrent };
-                if (!ClipboardTransaction.CanStartClipboardWrite(previous, ClipboardTransaction.ObserveClipboard())) return Cancelled();
-                written = await ClipboardTransaction.TrySetClipboardTextForOperationAsync(operation, previous, text, paste);
-                if (written == null) return new(false, Message: "Clipboard changed or couldn't be written — action cancelled");
+                if (previous == null)
+                {
+                    Log.Warn("Apply replace failed: clipboard snapshot failed");
+                    return new(false, Message: "剪贴板格式无法安全保留")
+                        { CanRetry = !paste && operation.IsCurrent };
+                }
+                if (!ClipboardTransaction.CanStartClipboardWrite(previous, ClipboardTransaction.ObserveClipboard()))
+                {
+                    Log.Warn("Apply replace failed: clipboard changed before write");
+                    return Cancelled();
+                }
+                // requireExactTarget: false —— 窗口级校验已在上面前置完成；替换/粘贴目标
+                // 往往无 AutomationRuntimeId，严格精确输入目标校验会统一拒绝（同翻译替换）。
+                written = await ClipboardTransaction.TrySetClipboardTextForOperationAsync(operation, previous, text, requireExactTarget: false);
+                if (written == null)
+                {
+                    Log.Warn("Apply replace failed: clipboard write rejected");
+                    return new(false, Message: "剪贴板已更改或无法写入--操作已取消");
+                }
             }
             else if (!ClipboardTransaction.TryCommitClipboardMutation(operation, () => TryCopy(text)))
                 return operation.IsCurrent
-                    ? new(false, Message: "Couldn't write to the clipboard — try again") { CanRetry = true }
+                    ? new(false, Message: "无法写入剪贴板--请重试") { CanRetry = true }
                     : Cancelled();
 
             if (paste)
             {
                 if (!await operation.CanUseSelectionAsync())
                 {
+                    Log.Warn("Apply replace failed: selection invalidated after clipboard write");
                     ClipboardTransaction.RestoreClipboardIfUnchanged(previous!, written!.Value);
                     return Cancelled();
                 }
                 inputAttempted = true;
-                var outcome = await InputExecutor.TrySimulatePasteAsync(operation, written);
-                if (outcome.Status != InputExecutor.InputInjectionStatus.Succeeded)
-                {
-                    if (outcome.Status != InputExecutor.InputInjectionStatus.Partial || InputExecutor.CanRollbackAfterPartialPaste(outcome))
-                        ClipboardTransaction.RestoreClipboardIfUnchanged(previous!, written!.Value);
-                    return new(false, Message: outcome.Status == InputExecutor.InputInjectionStatus.Partial
-                        ? "Windows accepted only part of the paste shortcut. Check the target before trying again."
-                        : "Focus moved — paste cancelled");
-                }
-                return new(true, Message: "Replaced selection");
+                var outcome = await InputExecutor.TrySimulatePasteForReplaceAsync(operation, written);
+                if (outcome.Status == InputExecutor.InputInjectionStatus.Succeeded) return new(true, Message: "替换选择");
+                if (outcome.Status != InputExecutor.InputInjectionStatus.Partial || InputExecutor.CanRollbackAfterPartialPaste(outcome))
+                    ClipboardTransaction.RestoreClipboardIfUnchanged(previous!, written!.Value);
+                Log.Warn($"Apply replace failed: paste injection {outcome.Status}");
+                return new(false, Message: outcome.Status == InputExecutor.InputInjectionStatus.Partial
+                    ? "Windows只接受粘贴快捷方式的一部分。请在重试之前检查目标。"
+                    : "焦点已移动--粘贴已取消");
             }
-            if (restoreAfterCopy && previous != null && written is { } accepted)
-            {
-                _ = RestoreLaterAsync(previous, accepted);
-                previous = null; // delayed restore owns and disposes the snapshot
-            }
-            return new(true, Message: "Copied result");
+
+            if (!restoreAfterCopy || previous == null || written is not { } accepted) return new(true, Message: "复制结果");
+            _ = RestoreLaterAsync(previous, accepted);
+            previous = null; // delayed restore owns and disposes the snapshot
+            return new(true, Message: "复制结果");
         }
         catch (Exception ex)
         {
             // Once input may have reached the target, do not restore a payload it may still be reading.
             if (!inputAttempted && previous != null && written is { } accepted)
                 ClipboardTransaction.RestoreClipboardIfUnchanged(previous, accepted);
-            Log.Warn($"Applying result failed ({ex.GetType().Name})");
-            return new(false, Message: inputAttempted ? "The paste could not be confirmed. Check the target before retrying." : "The result could not be copied. Try again.")
+            Log.Warn($"应用结果失败 ({ex.GetType().Name})");
+            return new(false, Message: inputAttempted ? "无法确认粘贴。重试前请检查目标。" : "无法复制结果。再试一次。")
                 { CanRetry = !paste && operation.IsCurrent };
         }
         finally { previous?.Dispose(); }
@@ -107,7 +125,7 @@ internal static class ActionRunner
             await Task.Delay(3000);
             ClipboardTransaction.RestoreClipboardIfUnchanged(snapshot, accepted);
         }
-        catch (Exception ex) { Log.Warn($"Clipboard restore failed ({ex.GetType().Name})"); }
+        catch (Exception ex) { Log.Warn($"剪贴板还原失败 ({ex.GetType().Name})"); }
         finally { snapshot.Dispose(); }
     }
 
@@ -117,5 +135,5 @@ internal static class ActionRunner
         catch { return false; }
     }
 
-    private static ActionResult Cancelled() => new(false, Message: "Selection or focus changed — action cancelled");
+    private static ActionResult Cancelled() => new(false, Message: "选择或焦点已更改--操作已取消");
 }

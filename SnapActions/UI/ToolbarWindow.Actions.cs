@@ -26,7 +26,7 @@ public partial class ToolbarWindow
         if (_generation != generation) return;
         if (!result.Success)
         {
-            await ShowFailureAndHide(result.Message ?? "The action could not be completed");
+            await ShowFailureAndHide(result.Message ?? "无法完成该操作");
             return;
         }
         if (result.ResultText != null)
@@ -35,11 +35,13 @@ public partial class ToolbarWindow
             Volatile.Write(ref _operationContext, null);
             _dismissTimer.Stop();
             SubMenuPopup.IsOpen = false;
+            CloseTranslatePopup();
             Hide();
             ResultPopup.ShowActionResult(action.Name, result.ResultText, selection);
             return;
         }
-        HideToolbar();
+        // 打开自带 UI 的动作（翻译弹层）保持工具栏可见；其余动作照常收起。
+        if (!result.KeepToolbarOpen) HideToolbar();
     }
 
     private static bool TrySetClipboardText(string text) => ActionRunner.TryCopy(text);
@@ -125,44 +127,77 @@ public partial class ToolbarWindow
         CustomizationHint.Visibility = Visibility.Visible;
         GearButton.Visibility = _currentSubMenuCategory != null ? Visibility.Visible : Visibility.Collapsed;
 
-        if (_currentSubMenuGroup == "All actions" && Registry != null)
+        switch (_currentSubMenuGroup)
         {
-            SubMenuTitle.Text = "All actions — drag to pin, click to show/hide";
-            foreach (var category in Enum.GetValues<ActionCategory>())
+            case "All actions" when Registry != null:
             {
-                SubMenuPanel.Children.Add(new TextBlock
+                SubMenuTitle.Text = "所有操作 — 拖到工具栏固定，点击显示/隐藏";
+                foreach (var category in Enum.GetValues<ActionCategory>())
                 {
-                    Text = category.ToString(), FontSize = 10, FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)FindResource("AccentBrush"), Width = 370, Margin = new Thickness(8, 6, 8, 2)
-                });
-                foreach (var action in Registry.GetAllActionsForCategory(category))
-                    SubMenuPanel.Children.Add(CreateSubMenuButton(action, true));
+                    SubMenuPanel.Children.Add(new TextBlock
+                    {
+                        Text = CategoryDisplayName(category), FontSize = 10, FontWeight = FontWeights.SemiBold,
+                        Foreground = (Brush)FindResource("SystemFillColorAttentionBrush"), Width = 370, Margin = new Thickness(8, 6, 8, 2)
+                    });
+                    foreach (var action in Registry.GetAllActionsForCategory(category))
+                        SubMenuPanel.Children.Add(CreateSubMenuButton(action, true));
+                }
+
+                break;
             }
-        }
-        else if (_currentSubMenuGroup == "More actions" && MoreButton.Tag is List<IAction> overflow)
-        {
-            SubMenuTitle.Text = "More actions";
-            foreach (var action in overflow) SubMenuPanel.Children.Add(CreateSubMenuButton(action, false));
-        }
-        else if (_editMode && Registry != null && _currentSubMenuCategory != null)
-        {
-            SubMenuTitle.Text = $"{_currentSubMenuGroup} (editing)";
-            foreach (var a in Registry.GetAllActionsForCategory(_currentSubMenuCategory.Value))
-                SubMenuPanel.Children.Add(CreateSubMenuButton(a, true));
-        }
-        else
-        {
-            SubMenuTitle.Text = _currentSubMenuGroup ?? "";
-            var g = _actionGroups.FirstOrDefault(g => g.Name == _currentSubMenuGroup);
-            if (g == null) { SubMenuPopup.IsOpen = false; return; }
-            foreach (var a in g.Actions)
-                SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+            case "More actions" when MoreButton.Tag is List<IAction> overflow:
+            {
+                SubMenuTitle.Text = "更多操作";
+                foreach (var action in overflow) SubMenuPanel.Children.Add(CreateSubMenuButton(action, false));
+                break;
+            }
+            default:
+            {
+                if (_editMode && Registry != null && _currentSubMenuCategory != null)
+                {
+                    SubMenuTitle.Text = $"{GroupDisplayName(_currentSubMenuGroup)}（编辑中）";
+                    foreach (var a in Registry.GetAllActionsForCategory(_currentSubMenuCategory.Value))
+                        SubMenuPanel.Children.Add(CreateSubMenuButton(a, true));
+                }
+                else
+                {
+                    SubMenuTitle.Text = GroupDisplayName(_currentSubMenuGroup) ?? "";
+                    var g = _actionGroups.FirstOrDefault(g => g.Name == _currentSubMenuGroup);
+                    if (g == null) { SubMenuPopup.IsOpen = false; return; }
+                    foreach (var a in g.Actions)
+                        SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+                }
+
+                break;
+            }
         }
 
         // Position popup just below the toolbar, aligned left
         SubMenuPopup.IsOpen = true;
         StartDismissTimer();
     }
+
+    // Group names / category labels are internal identifiers used in == comparisons, so the
+    // submenu titles get translated here at display time instead of in the identifiers.
+    private static string? GroupDisplayName(string? name) => name switch
+    {
+        "Transform" => "文本转换",
+        "Encode" => "编码/解码",
+        "Search" => "搜索",
+        "All actions" => "所有操作",
+        "More actions" => "更多操作",
+        "Paste As" => "粘贴为",
+        _ => name,
+    };
+
+    private static string CategoryDisplayName(ActionCategory category) => category switch
+    {
+        ActionCategory.Context => "上下文",
+        ActionCategory.Transform => "转换",
+        ActionCategory.Search => "搜索",
+        ActionCategory.Encode => "编码",
+        _ => category.ToString(),
+    };
 
     // ── Paste As sub-menu (paste mode) ───────────────────────────
 
@@ -188,7 +223,7 @@ public partial class ToolbarWindow
 
         SubMenuPanel.Children.Clear();
         ResetPreview();
-        SubMenuTitle.Text = "Paste As";
+        SubMenuTitle.Text = "粘贴为";
         SubMenuHeader.Visibility = Visibility.Visible;
         CustomizationHint.Visibility = Visibility.Collapsed;
         GearButton.Visibility = Visibility.Collapsed;
@@ -206,7 +241,7 @@ public partial class ToolbarWindow
                 SubMenuPanel.Children.Add(new TextBlock
                 {
                     Text = "Encode", FontSize = 10, FontWeight = FontWeights.SemiBold,
-                    Foreground = (Brush)FindResource("AccentBrush"),
+                    Foreground = (Brush)FindResource("SystemFillColorAttentionBrush"),
                     Margin = new Thickness(8, 6, 8, 2), Width = 380
                 });
                 foreach (var a in encodes) SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));

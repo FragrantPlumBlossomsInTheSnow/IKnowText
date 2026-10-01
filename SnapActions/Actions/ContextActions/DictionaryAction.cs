@@ -37,7 +37,7 @@ public class DictionaryAction : IAction
         var word = text.Trim();
         var lang = Config.SettingsManager.Current.DictionaryLanguage;
         if (string.IsNullOrEmpty(lang)) lang = "en";
-        ResultPopup.ShowNearCursor($"Define: {word}",
+        ResultPopup.ShowNearCursor($"释义：{word}",
             ct => Services.LookupService.Shared.Define(word, lang, ct));
         return new ActionResult(true);
     }

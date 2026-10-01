@@ -15,10 +15,11 @@ internal static class SettingsValidator
         s.DisabledActionIds = Clean(s.DisabledActionIds);
         s.PinnedActionIds = Clean(s.PinnedActionIds);
         s.Theme = s.Theme is "light" or "dark" ? s.Theme : "system";
-        s.TextRecipes = (s.TextRecipes ?? []).Where(r => r != null && ValidId(r.Id) && !string.IsNullOrWhiteSpace(r.Name))
+        s.TextRecipes = s.TextRecipes.Where(r => r != null && ValidId(r.Id) && !string.IsNullOrWhiteSpace(r.Name))
             .DistinctBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var recipe in s.TextRecipes) recipe.Steps = (recipe.Steps ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
         s.SearchLanguage ??= "";
+        s.ExcludeRegex ??= "";
         s.TranslationSourceLanguage = LanguageOptions.IsSupported(s.TranslationSourceLanguage) ? s.TranslationSourceLanguage : "";
         s.TranslationTargetLanguage = LanguageOptions.IsSupported(s.TranslationTargetLanguage) ? s.TranslationTargetLanguage : "en";
         s.DictionaryLanguage = LanguageOptions.IsSupported(s.DictionaryLanguage) ? s.DictionaryLanguage : "en";
@@ -27,17 +28,24 @@ internal static class SettingsValidator
         if (!Enum.IsDefined(s.PasteModeTrigger)) s.PasteModeTrigger = PasteModeTrigger.LongPress;
         s.ExcludedAppsDefaultsVersion = Math.Max(0, s.ExcludedAppsDefaultsVersion);
         s.SearchEngines = (s.SearchEngines ?? AppSettings.GetDefaultEngines())
-            .Where(e => e != null && ValidId(e.Id) && !string.IsNullOrWhiteSpace(e.Name) && ValidTemplate(e.UrlTemplate))
+            .Where(e => ValidId(e.Id) && !string.IsNullOrWhiteSpace(e.Name) && ValidTemplate(e.UrlTemplate))
             .DistinctBy(e => e.Id, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var e in s.SearchEngines)
             if (!Enum.IsDefined(e.LangMode)) e.LangMode = LangMode.Url;
         s.UserActions = (s.UserActions ?? [])
-            .Where(a => a != null && ValidId(a.Id) && !string.IsNullOrWhiteSpace(a.Name) && ValidTemplate(a.UrlTemplate))
+            .Where(a => a != null && ValidId(a.Id) && !string.IsNullOrWhiteSpace(a.Name)
+                && (!string.IsNullOrWhiteSpace(a.Code) || !string.IsNullOrWhiteSpace(a.ScriptFile)
+                    || ValidTemplate(a.UrlTemplate)))
             .DistinctBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var a in s.UserActions)
         {
             a.JsonField ??= "";
             a.AppliesToType ??= "";
+            a.Code ??= "";
+            a.ScriptFile ??= "";
+            a.ContextRegex ??= "";
+            if (a.Code.Length > 64 * 1024) a.Code = a.Code[..(64 * 1024)];
+            if (a.ContextRegex.Length > 2048) a.ContextRegex = a.ContextRegex[..2048];
             if (!Enum.IsDefined(a.Kind)) a.Kind = UserActionKind.OpenUrl;
         }
         var profiles = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);

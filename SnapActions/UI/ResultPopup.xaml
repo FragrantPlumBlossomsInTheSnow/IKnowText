@@ -6,46 +6,53 @@
         SizeToContent="WidthAndHeight"
         MaxWidth="480" MaxHeight="500" ShowActivated="False">
 
-    <Border Background="{DynamicResource BackgroundBrush}"
-            BorderBrush="{DynamicResource BorderBrush}"
+    <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+            BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
             BorderThickness="1" CornerRadius="10" Padding="12"
             MinWidth="200" MinHeight="60">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="20" Opacity="0.4" ShadowDepth="4" Color="#000000"/>
+            <DropShadowEffect BlurRadius="20" Opacity="0.4" ShadowDepth="4" Color="#000000" />
         </Border.Effect>
         <StackPanel>
             <DockPanel Margin="0,0,0,8">
                 <TextBlock x:Name="TitleText" FontSize="12" FontWeight="SemiBold"
-                           Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                           Foreground="{DynamicResource SystemFillColorAttentionBrush}" VerticalAlignment="Center" />
                 <Button DockPanel.Dock="Right" Content="X" Width="20" Height="20" FontSize="10"
-                        Background="Transparent" Foreground="{DynamicResource TextSecondaryBrush}"
-                        BorderThickness="0" Click="Close_Click" Cursor="Hand"/>
+                        Background="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        BorderThickness="0" Click="Close_Click" Cursor="Hand" />
             </DockPanel>
 
             <TextBlock x:Name="SourceText" Visibility="Collapsed" TextWrapping="Wrap" MaxHeight="60"
-                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,8"/>
-            <TextBlock x:Name="LoadingText" Text="Loading..." FontSize="12" TextWrapping="Wrap"
-                       Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Visible"/>
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="11" Margin="0,0,0,8" />
+            <TextBlock x:Name="LoadingText" Text="正在加载..." FontSize="12" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" Visibility="Visible" />
 
             <ScrollViewer MaxHeight="250" VerticalScrollBarVisibility="Auto">
                 <TextBlock x:Name="ResultText" FontSize="13" TextWrapping="Wrap"
-                           Foreground="{DynamicResource TextBrush}" Visibility="Collapsed"/>
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" Visibility="Collapsed" />
             </ScrollViewer>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" Margin="0,8,0,0">
-                <Button x:Name="CopyButton" Content="Copy result" Visibility="Collapsed" Padding="12,4"
-                        Background="{DynamicResource SurfaceBrush}"
-                        Foreground="{DynamicResource TextBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        Click="Copy_Click" Cursor="Hand"/>
-                <Button x:Name="RetryButton" Content="Retry" Visibility="Collapsed"
+                <Button x:Name="CopyButton" Content="复制结果" Visibility="Collapsed" Padding="12,4"
+                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        Click="Copy_Click" Cursor="Hand" />
+                <Button x:Name="RetryButton" Content="重试" Visibility="Collapsed"
                         Margin="8,0,0,0" Padding="12,4"
-                        Background="{DynamicResource SurfaceBrush}"
-                        Foreground="{DynamicResource TextBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        Click="Retry_Click" Cursor="Hand"/>
-                <Button x:Name="ReplaceButton" Content="Replace selection" Visibility="Collapsed"
-                        Margin="8,0,0,0" Padding="12,4" Click="Replace_Click"/>
+                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        Click="Retry_Click" Cursor="Hand" />
+                <Button x:Name="ReplaceButton" Content="替换原文"
+                        Visibility="Collapsed"
+                        Cursor="Hand"
+                        Padding="12,4"
+                        Margin="8,0,0,0" 
+                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                        BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        Click="Replace_Click" />
             </StackPanel>
         </StackPanel>
     </Border>

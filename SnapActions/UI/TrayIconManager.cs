@@ -1,22 +1,28 @@
-using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Forms;
 using SnapActions.Config;
+using SnapActions.Helpers;
 
 namespace SnapActions.UI;
 
 public class TrayIconManager : IDisposable
 {
-    private NotifyIcon? _trayIcon;
     private ContextMenuStrip? _contextMenu;
     private SettingsWindow? _settingsWindow;
+    private NotifyIcon? _trayIcon;
+
+    public void Dispose()
+    {
+        _trayIcon?.Dispose();
+        _contextMenu?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     public void Initialize()
     {
         _contextMenu = new ContextMenuStrip();
 
-        var enableItem = new ToolStripMenuItem("Enabled")
+        var enableItem = new ToolStripMenuItem("启用")
         {
             Checked = SettingsManager.Current.Enabled,
             CheckOnClick = true
@@ -29,10 +35,10 @@ public class TrayIconManager : IDisposable
             SettingsManager.Save();
         };
 
-        var settingsItem = new ToolStripMenuItem("Settings...");
+        var settingsItem = new ToolStripMenuItem("设置...");
         settingsItem.Click += (_, _) => ShowSettings();
 
-        var autoStartItem = new ToolStripMenuItem("Start with Windows")
+        var autoStartItem = new ToolStripMenuItem("开机自启")
         {
             Checked = SettingsManager.Current.AutoStart,
             CheckOnClick = true
@@ -51,8 +57,8 @@ public class TrayIconManager : IDisposable
             autoStartItem.Checked = SettingsManager.Current.AutoStart;
         };
 
-        var exitItem = new ToolStripMenuItem("Exit");
-        exitItem.Click += (_, _) => System.Windows.Application.Current.Shutdown();
+        var exitItem = new ToolStripMenuItem("退出");
+        exitItem.Click += (_, _) => Application.Current.Shutdown();
 
         _contextMenu.Items.Add(enableItem);
         _contextMenu.Items.Add(autoStartItem);
@@ -79,10 +85,24 @@ public class TrayIconManager : IDisposable
             _settingsWindow.Activate();
             return;
         }
+
         _settingsWindow = new SettingsWindow();
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    public void ShowReadyNotification()
+    {
+        if (_trayIcon == null) return;
+        try
+        {
+            _trayIcon.ShowBalloonTip(2000, "SnapActions", "准备就绪", ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Tray ready notification failed: {ex.Message}");
+        }
     }
 
     private static Icon CreateDefaultIcon()
@@ -91,25 +111,32 @@ public class TrayIconManager : IDisposable
         try
         {
             var uri = new Uri("pack://application:,,,/app.ico", UriKind.Absolute);
-            var sri = System.Windows.Application.GetResourceStream(uri);
+            var sri = Application.GetResourceStream(uri);
             if (sri != null)
             {
                 using var s = sri.Stream;
                 return new Icon(s, 16, 16);
             }
-            SnapActions.Helpers.Log.Warn("Tray icon: pack:// resource not found; falling back to file");
+
+            Log.Warn("Tray icon: pack:// resource not found; falling back to file");
         }
-        catch (Exception ex) { SnapActions.Helpers.Log.Warn($"Tray icon: pack:// load failed ({ex.Message}); falling back to file"); }
+        catch (Exception ex)
+        {
+            Log.Warn($"Tray icon: pack:// load failed ({ex.Message}); falling back to file");
+        }
 
         // Fallback to a side-by-side file (dev runs / framework-dependent publish)
         try
         {
-            var icoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
-            if (System.IO.File.Exists(icoPath))
+            var icoPath = Path.Combine(AppContext.BaseDirectory, "app.ico");
+            if (File.Exists(icoPath))
                 return new Icon(icoPath, 16, 16);
-            SnapActions.Helpers.Log.Warn($"Tray icon: app.ico not found at {icoPath}; using generated icon");
+            Log.Warn($"Tray icon: app.ico not found at {icoPath}; using generated icon");
         }
-        catch (Exception ex) { SnapActions.Helpers.Log.Warn($"Tray icon: file load failed ({ex.Message}); using generated icon"); }
+        catch (Exception ex)
+        {
+            Log.Warn($"Tray icon: file load failed ({ex.Message}); using generated icon");
+        }
 
         // Last resort: generate programmatically
         using var bmp = new Bitmap(16, 16);
@@ -129,7 +156,7 @@ public class TrayIconManager : IDisposable
         using var greenBrush = new SolidBrush(Color.FromArgb(166, 227, 161));
         g.FillRectangle(greenBrush, 12, 11, 2, 2);
 
-        IntPtr hIcon = bmp.GetHicon();
+        var hIcon = bmp.GetHicon();
         Icon? icon = null;
         try
         {
@@ -145,13 +172,6 @@ public class TrayIconManager : IDisposable
             icon?.Dispose();
             DestroyIcon(hIcon);
         }
-    }
-
-    public void Dispose()
-    {
-        _trayIcon?.Dispose();
-        _contextMenu?.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     [DllImport("user32.dll")]

@@ -26,7 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="iNKORE.UI.WPF.Modern" Version="0.10.2.1" />
+    <PackageReference Include="Jint" Version="4.16.4" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+    <PackageReference Include="WPF-UI.DependencyInjection" Version="4.3.0" />
+    <PackageReference Include="WPF-UI.Tray" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,13 +39,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="..\licenses\*" Link="licenses\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <Content Include="..\browser-extension\manifest.json;..\browser-extension\background.js;..\browser-extension\read-selection.js;..\browser-extension\install-host.ps1;..\browser-extension\README.md;..\browser-extension\selection-sample.html"
-             Link="browser-extension\%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Remove="..\licenses\**" />
   </ItemGroup>
 
 </Project>

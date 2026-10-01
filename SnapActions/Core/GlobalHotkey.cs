@@ -17,7 +17,13 @@ internal sealed class GlobalHotkey : IDisposable
             if (message == 0x0312 && wParam.ToInt32() == Id) { handled = true; requested(); }
             return IntPtr.Zero;
         });
-        IsRegistered = RegisterHotKey(_window.Handle, Id, 0x4000 | 0x0002 | 0x0004, 0x20); // Ctrl+Shift+Space, no repeat
+        // Ctrl+Shift+Space, no repeat. RegisterHotKey 失败返回 false 时 GetLastError 给出原因
+        //（最常见是被其它程序已占用同一全局热键），打日志便于定位"快捷键无反应"类问题。
+        IsRegistered = RegisterHotKey(_window.Handle, Id, 0x4000 | 0x0002 | 0x0004, 0x20);
+        if (!IsRegistered)
+            SnapActions.Helpers.Log.Error($"Keyboard palette hotkey (Ctrl+Shift+Space) registration FAILED, GetLastError={Marshal.GetLastWin32Error()}");
+        else
+            SnapActions.Helpers.Log.Info("Keyboard palette hotkey (Ctrl+Shift+Space) registered");
     }
 
     public void Dispose()

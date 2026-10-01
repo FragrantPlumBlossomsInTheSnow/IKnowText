@@ -6,7 +6,7 @@ public class WhitespaceAction(string id, string name, Func<string, string> trans
 {
     public string Id => $"ws_{id}";
     public string Name => name;
-    public string IconKey => "IconWhitespace";
+    public string IconKey => "";
     public ActionCategory Category => ActionCategory.Transform;
     public bool IsPreviewSafe => true;
 

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;
+using SnapActions.Config;
 
 namespace SnapActions.Core;
 
@@ -35,8 +36,16 @@ internal static class UiaSelectionProvider
         await CaptureLock.WaitAsync();
         try
         {
-            if (!await operation.CanInjectInputAsync()) return Result(null);
-            if (UiaSkipApps.Contains(ForegroundApp.GetActiveProcessName() ?? "")) return Result(null);
+            if (!await operation.CanInjectInputAsync())
+            {
+                SnapActions.Helpers.Log.Info("Capture aborted: cannot inject input");
+                return Result(null);
+            }
+            if (UiaSkipApps.Contains(ForegroundApp.GetActiveProcessName() ?? ""))
+            {
+                SnapActions.Helpers.Log.Info("Capture aborted: app is UIA-skip listed");
+                return Result(null);
+            }
             var probe = await RunBoundedUiaAsync(
                 () => ProbeSelectionViaUIA(cursorX, cursorY, operation.Target.ProcessId,
                     operation.Target.AutomationRuntimeId, gesture, preferExactCopy: false, acceptCursorPointText: true),
@@ -50,13 +59,47 @@ internal static class UiaSelectionProvider
                 return Result(probe.Text);
             }
             if (probe.Outcome is SelectionProbeOutcome.SuppressItemElement or SelectionProbeOutcome.UntrustedText)
+            {
+                SnapActions.Helpers.Log.Info($"Capture aborted: probe outcome {probe.Outcome} ({(probe.Reason ?? "no reason")})");
                 return Result(null);
+            }
             var fallback = await RunBoundedUiaAsync(
                 () => CopyViaUIA(operation.Target.ProcessId, operation.Target.AutomationRuntimeId), null);
             if (fallback is { } selected)
                 operation = operation.WithTarget(BindProbeIdentity(operation.Target, selected))
                     .WithInputValidation(selected.ValidateInput);
-            return Result(await operation.CanInjectInputAsync() ? fallback?.Text : null);
+            var uiaText = fallback?.Text;
+            if (string.IsNullOrEmpty(uiaText))
+            {
+                // UIA 全链路（聚焦树 + 光标点 + CopyViaUIA）都没读到选区，走合成键兜底前先记录
+                // 关键闸门状态，便于区分：只能注入但未勾选、滚动冷却中、还是注入后被拒。
+                SnapActions.Helpers.Log.Info(
+                    $"UIA produced no text (probe={probe.Outcome}, canInject={operation.CanInjectInput}, " +
+                    $"scrollCooldown={MouseHook.IsRecentScroll(ScrollCooldownAfterScrollMs)}, syntheticKeys={UseSyntheticKeys()})");
+            }
+            // UIA 永远优先。勾选“默认使用合成键”后，UIA 读不到选区才用合成复制键兜底
+            // （Java Swing IDE 如 Rider、部分 Chromium）；未勾选则只走 UIA、绝不注入按键。
+            if (!string.IsNullOrEmpty(uiaText))
+                return Result(operation.CanInjectInput ? uiaText : null);
+            if (!await operation.CanInjectInputAsync())
+            {
+                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: cannot inject input after UIA returned empty");
+                return Result(null);
+            }
+            if (!UseSyntheticKeys())
+            {
+                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: synthetic keys disabled in settings");
+                return Result(null);
+            }
+            if (MouseHook.IsRecentScroll(ScrollCooldownAfterScrollMs))
+            {
+                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: scroll cooldown active");
+                return Result(null);
+            }
+            // 经精确前台目标校验、剪贴板事务读回并恢复原剪贴板。
+            var synthetic = await TrySyntheticCopyAsync(operation);
+            if (!operation.CanInjectInput) return Result(null);
+            return !string.IsNullOrEmpty(synthetic) ? Result(synthetic) : Result(operation.CanInjectInput ? uiaText : null);
         }
         catch (Exception ex)
         {
@@ -106,6 +149,15 @@ internal static class UiaSelectionProvider
     {
         "thunderbird",
     };
+
+    /// <summary>滚动后的冷却窗口（毫秒）：期间抑制合成键注入，避免拖动/滚轮后页面回卷到光标处。</summary>
+    private const long ScrollCooldownAfterScrollMs = 300;
+
+    /// <summary>
+    /// 是否允许在 UIA 读不到选区时用合成复制键兜底（设置项“默认使用合成键”）。
+    /// 未勾选则只走 UIA、绝不注入按键。
+    /// </summary>
+    private static bool UseSyntheticKeys() => SettingsManager.Current.UseSyntheticKeys;
 
     private const int UiaCallTimeoutMs = 500;
     private const int UiaBusyHandoffMs = 50;
@@ -276,12 +328,12 @@ internal static class UiaSelectionProvider
                             var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(BrowserMessage.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
-                                bool requireGestureText = acceptCursorPointText
-                                    && RequiresChromiumGestureText(element, gesture);
-                                var gestureText = requireGestureText
-                                    ? TryReadChromiumSelectionFromGesture(
-                                        tp, element, gesture, combined, ranges)
-                                    : null;
+                                // 沿用旧版（v2.4.5 备份 TextCapture.cs）：不强制 Chromium 手势文本。
+                                // 扩展桥未连接时，RangeFromPoint 重建手势选区常失败，导致浏览器
+                                // 双击/拖拽划词全部 UntrustedText abort（2026-09-19 连败日志）。
+                                // UIA 读到的选区文本直接接受，读不到再走剪贴板/合成键兜底。
+                                bool requireGestureText = false;
+                                string? gestureText = null;
                                 var selected = ClassifyUiaSelection(
                                     combined,
                                     fromCursorPoint: false,
@@ -846,14 +898,12 @@ internal static class UiaSelectionProvider
                             var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(BrowserMessage.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
-                                bool requireGestureText = deriveGestureText
-                                    && RequiresChromiumGestureText(element, gesture);
-                                var gestureText = requireGestureText
-                                    ? TryReadChromiumSelectionFromGesture(
-                                        (TextPattern)pat, element, gesture, combined, ranges)
-                                    : null;
+                                // 沿用旧版：光标点路径同样不强制 Chromium 手势文本（原因同上，
+                                // 扩展桥未连接时手势重建失败会让浏览器划词全部 UntrustedText abort）。
+                                bool requireGestureText = false;
+                                string? gestureText = null;
                                 return (combined, gestureText, requireGestureText,
-                                    CreateInputValidation((TextPattern)pat, ranges, gestureText ?? combined));
+                                    CreateInputValidation((TextPattern)pat, ranges, combined));
                             }
                         }
                     }
@@ -952,6 +1002,153 @@ internal static class UiaSelectionProvider
             result.Append(fragment);
         }
         return result.ToString();
+    }
+
+    /// <summary>
+    /// 合成复制兜底：对 UI Automation 读不到选区的应用（Java Swing 等），先 Ctrl+Insert、仍无结果
+    /// 再 Ctrl+C。整段受精确前台目标校验约束，快照→注入→读回→恢复到原剪贴板，杜绝污染用户剪贴板。
+    /// 剪贴板为空（没有可保护的内容）时仍允许注入，成功后把写入内容清空以恢复“空”状态。
+    /// </summary>
+    private static async Task<string?> TrySyntheticCopyAsync(SelectionOperation operation)
+    {
+        // 剪贴板可能被另一进程瞬时锁定（其正在复制/粘贴，持有 OpenClipboard 互斥，通常几十毫秒
+        // 内释放）。此时 OLE 的 Clipboard.GetDataObject() 仍可能成功（走 OleGetClipboard，不占用
+        // Win32 锁），而快照里的 Win32 OpenClipboard 备份会失败。若一次失败即放弃，会把一次
+        // 瞬时锁定误判成"剪贴板被占用"，导致合成兜底整段跳过、划词失败。这里短延迟重试几次。
+        ClipboardTransaction.ClipboardSnapshot? snapshot = null;
+        bool clipboardEmpty = false;
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            if (attempt > 0) await Task.Delay(60);
+            snapshot = await Application.Current.Dispatcher.InvokeAsync(
+                ClipboardTransaction.SnapshotClipboard);
+            if (snapshot != null) break;
+            // 剪贴板为空时无需保护：仍允许合成注入（划词的兜底不因剪贴板为空而失效）。
+            clipboardEmpty = await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                try { return Clipboard.GetDataObject() == null; }
+                catch { return false; }
+            });
+            if (clipboardEmpty) break;
+        }
+        if (snapshot == null && !clipboardEmpty)
+        {
+            // 持续非空却无法快照（被其他进程长时间锁定等）：放弃，避免污染用户无法恢复的内容。
+            SnapActions.Helpers.Log.Info("Synthetic fallback skipped: clipboard occupied but snapshot failed");
+            return null;
+        }
+        SnapActions.Helpers.Log.Info(
+            "Synthetic copy fallback engaged (UIA produced no text); app=" +
+            ForegroundApp.GetActiveProcessName());
+        ClipboardTransaction.ClipboardObservation? acceptedWrite = null;
+        try
+        {
+            var before = ClipboardTransaction.ObserveClipboard();
+            if (snapshot != null && before != snapshot.Observation)
+            {
+                SnapActions.Helpers.Log.Info("Synthetic fallback aborted: clipboard changed between snapshot and copy");
+                return null;
+            }
+            if (!await operation.CanInjectInputAsync())
+            {
+                SnapActions.Helpers.Log.Info("Synthetic fallback aborted: input rejected before copy");
+                return null;
+            }
+
+            var (text, clipboardObservation) = await TryOneSyntheticCopyAsync(operation, before, useCtrlC: false);
+            if (clipboardObservation is { } a1) acceptedWrite = a1;
+
+            // 暂时停用：Ctrl+C 可能被应用拦截（如 VS Code 的 Ctrl+C 复制行），导致划词后选区残留在剪贴板，用户粘贴时意外多出划词文本。
+            /*if (string.IsNullOrEmpty(text) && operation.IsCurrent)
+            {
+                var r2 = await TryOneSyntheticCopyAsync(operation, before, useCtrlC: true);
+                if (!string.IsNullOrEmpty(r2.Text) && r2.AcceptedWrite is { } a2)
+                {
+                    text = r2.Text;
+                    acceptedWrite = a2;
+                }
+            }*/
+            return text;
+        }
+        finally
+        {
+            // RestoreClipboardIfUnchanged 内部会 Dispose snapshot；只有未入账写时我们手动释放。
+            if (acceptedWrite is { } ak && operation.IsCurrent)
+            {
+                if (snapshot != null)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                        ClipboardTransaction.RestoreClipboardIfUnchanged(snapshot, ak));
+                }
+                else
+                {
+                    // 原剪贴板为空：仅当剪贴板仍是本次写入的内容时清空，把剪贴板恢复为“空”。
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        try
+                        {
+                            if (ClipboardTransaction.ObserveClipboard() == ak)
+                                Clipboard.Clear();
+                        }
+                        catch { /* 清空失败不致命，任务已读回文本 */ }
+                    });
+                }
+            }
+            else
+            {
+                snapshot?.Dispose();
+            }
+        }
+    }
+
+    private static async Task<(string? Text, ClipboardTransaction.ClipboardObservation? AcceptedWrite)> TryOneSyntheticCopyAsync(
+        SelectionOperation operation, ClipboardTransaction.ClipboardObservation before, bool useCtrlC)
+    {
+        var outcome = await InputExecutor.TrySimulateCopyAsync(operation, before, useCtrlC);
+        bool delivered = outcome.Status == InputExecutor.InputInjectionStatus.Succeeded;
+        string? text = null;
+        ClipboardTransaction.ClipboardObservation? acceptedWrite = null;
+        for (int i = 0; i < 30; i++)
+        {
+            await Task.Delay(10);
+            var after = ClipboardTransaction.ObserveClipboard();
+            if (after.Sequence == before.Sequence)
+            {
+                if (i < 29) continue;
+                break; // 目标未写剪贴板（无选区或拒绝）
+            }
+            bool targetStillValid = operation.IsCurrent
+                                    && await ForegroundGuard.StillValidAsync(operation.Target);
+            var ownership = ClipboardTransaction.ClassifyClipboardMutation(
+                before, after, delivered, operation.Target.ProcessId, targetStillValid);
+            if (ClipboardTransaction.CanReadClipboardMutation(ownership))
+            {
+                text = await ClipboardTransaction.ReadCurrentClipboardTextAsync();
+                var afterRead = ClipboardTransaction.ObserveClipboard();
+                if (ClipboardTransaction.ContinuesOwnedClipboard(
+                        after, afterRead, operation.Target.ProcessId))
+                {
+                    // 放宽还原门槛：Chromium/目标进程复制会多次发布剪贴板格式（文本+HTML+元数据），
+                    // seq 常跳多步 → OwnedUnrestorable。只要读取期间剪贴板未再变（after==afterRead），
+                    // 目标进程仍持有，就允许还原——RestoreClipboardIfUnchanged 锁定后会二次校验
+                    // acceptedWrite 观察，第三方新写入会失败还原而不是被覆盖。修复划词后选中文本
+                    // 残留在剪贴板（日志 restorable=False 大量命中）。
+                    if ((ownership is ClipboardTransaction.ClipboardMutationOwnership.Owned
+                            or ClipboardTransaction.ClipboardMutationOwnership.OwnedUnrestorable)
+                        && ClipboardTransaction.CanRestoreClipboard(after, afterRead))
+                        acceptedWrite = afterRead;
+                }
+                else
+                {
+                    text = null; // 读取期间被其它进程改写——不接受，也不恢复
+                }
+            }
+            break;
+        }
+        SnapActions.Helpers.Log.Info(
+            $"Synthetic copy ({(useCtrlC ? "Ctrl+C" : "Ctrl+Insert")}): status={outcome.Status}, " +
+            $"text={(text == null ? "null" : text.Length + " chars")}, restorable={acceptedWrite != null}");
+        return (text, acceptedWrite);
     }
 
 }

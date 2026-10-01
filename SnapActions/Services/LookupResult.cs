@@ -10,7 +10,7 @@ public enum LookupStatus { Success, Empty, Error, Cancelled }
 public sealed record LookupResult(LookupStatus Status, string Text)
 {
     public static LookupResult Success(string text) => string.IsNullOrWhiteSpace(text)
-        ? new(LookupStatus.Empty, "No result found") : new(LookupStatus.Success, text);
+        ? new(LookupStatus.Empty, "未找到结果") : new(LookupStatus.Success, text);
     public static LookupResult Error(string message) => new(LookupStatus.Error, message);
 }
 

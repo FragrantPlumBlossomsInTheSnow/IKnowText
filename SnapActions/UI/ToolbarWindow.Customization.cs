@@ -40,7 +40,7 @@ public partial class ToolbarWindow
                 if (Math.Abs(point.X - pressPoint.X) < SystemParameters.MinimumHorizontalDragDistance
                     && Math.Abs(point.Y - pressPoint.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
-                // Release Button's click capture before entering OLE's nested drag loop.
+                // 在进入OLE的嵌套拖动循环之前，释放按钮的点击捕获。
                 pressedButton.ReleaseMouseCapture();
                 pressedButton = null;
                 e.Handled = true;
@@ -62,10 +62,12 @@ public partial class ToolbarWindow
             e.Handled = true;
             e.Effects = IsOwnActionDrag(e.Data) ? DragDropEffects.Move : DragDropEffects.None;
             if (e.Effects == DragDropEffects.None) return;
+            
             var target = PinDropTarget(e.GetPosition(PinnedActionsPanel).X);
             var point = PinnedActionsPanel.TranslatePoint(new Point(target.X, 0), MainBorder);
-            PinDropIndicator.Margin = new Thickness(point.X, point.Y, 0, 0);
-            PinDropIndicator.Height = Math.Max(28, MainToolbar.ActualHeight);
+            
+            PinDropIndicator.Margin = new Thickness(point.X + MainBorder.Margin.Right, point.Y, 0, 0);
+            PinDropIndicator.Height = Math.Max(32, MainToolbar.ActualHeight);
             PinDropIndicator.Visibility = Visibility.Visible;
         };
         MainBorder.DragLeave += (_, _) => PinDropIndicator.Visibility = Visibility.Collapsed;
@@ -80,6 +82,7 @@ public partial class ToolbarWindow
             SettingsManager.Save();
             e.Effects = DragDropEffects.Move;
         };
+        
     }
 
     private bool IsOwnActionDrag(IDataObject data) => !_isPasteMode && _draggingAction != null
@@ -117,8 +120,8 @@ public partial class ToolbarWindow
             bool readOnly = action is IOperationAction && !_isEditable && !_isPasteMode;
             button.IsEnabled = !readOnly && action.CanExecute(_selectedText, _analysis);
             button.Opacity = button.IsEnabled ? 1 : 0.45;
-            string hint = readOnly ? "Select text in an editable input to use this action."
-                : !button.IsEnabled ? "This action does not apply to the current selection." : "Drag to pin or reorder. Right-click for options.";
+            string hint = readOnly ? "在可编辑输入中选择文本以使用此操作。"
+                : !button.IsEnabled ? "此操作不适用于当前选择。" : "拖动以固定或重新排序。右键单击可查看选项。";
             button.ToolTip = action.Name + " — " + hint;
             System.Windows.Automation.AutomationProperties.SetHelpText(button, hint);
             ToolTipService.SetShowOnDisabled(button, true);
@@ -129,7 +132,7 @@ public partial class ToolbarWindow
         bool pinned = settings.PinnedActionIds.Contains(action.Id);
         bool hidden = ToolbarPreferences.IsHidden(settings, action);
         var menu = new ContextMenu();
-        var pin = new MenuItem { Header = pinned ? "Unpin from toolbar" : "Pin to toolbar" };
+        var pin = new MenuItem { Header = pinned ? "从工具栏取消固定" : "固定到工具栏" };
         pin.Click += (_, _) =>
         {
             if (pinned) settings.PinnedActionIds.RemoveAll(id => id == action.Id);
@@ -137,15 +140,15 @@ public partial class ToolbarWindow
             SettingsManager.Save();
         };
         menu.Items.Add(pin);
-        var hide = new MenuItem { Header = hidden ? "Show action" : "Hide action" };
-        hide.Click += (_, _) => { ToolbarPreferences.SetHidden(settings, action, !hidden); SettingsManager.Save(); };
-        menu.Items.Add(hide);
+        // var hide = new MenuItem { Header = hidden ? "显示操作" : "隐藏操作" };
+        // hide.Click += (_, _) => { ToolbarPreferences.SetHidden(settings, action, !hidden); SettingsManager.Save(); };
+        // menu.Items.Add(hide);
         if (pinned)
         {
             int index = settings.PinnedActionIds.IndexOf(action.Id);
-            var left = new MenuItem { Header = "Move left", IsEnabled = index > 0 };
+            var left = new MenuItem { Header = "左移", IsEnabled = index > 0 };
             left.Click += (_, _) => MovePinned(action, -1);
-            var right = new MenuItem { Header = "Move right", IsEnabled = index < settings.PinnedActionIds.Count - 1 };
+            var right = new MenuItem { Header = "右移", IsEnabled = index < settings.PinnedActionIds.Count - 1 };
             right.Click += (_, _) => MovePinned(action, 1);
             menu.Items.Add(left); menu.Items.Add(right);
         }
@@ -167,6 +170,7 @@ public partial class ToolbarWindow
 
     private void OnSettingsChanged()
     {
+        // 工具栏配色走 token 自动重估，无需刷新背景材质（配合主题切换）。
         if (_draggingAction != null || _activeActionMenu != null) { _refreshAfterInteraction = true; return; }
         RefreshActions();
     }
@@ -185,7 +189,7 @@ public partial class ToolbarWindow
             else RebuildCurrentSubMenu();
         }
         CustomizationHint.Text = SettingsManager.LastSaveError
-            ?? "Drag onto the toolbar to pin. Right-click to hide or unpin.";
+            ?? "拖到工具栏上以固定。单击鼠标右键隐藏或取消固定。";
         if (!IsVisible) return;
         UpdateLayout();
         var bounds = ScreenHelper.GetScreenBounds(_anchorPoint);

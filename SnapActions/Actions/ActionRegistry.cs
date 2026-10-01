@@ -1,10 +1,11 @@
+using System.Text.RegularExpressions;
 using SnapActions.Actions.ContextActions;
 using SnapActions.Actions.TransformActions;
 using SnapActions.Detection;
 
 namespace SnapActions.Actions;
 
-public class ActionRegistry
+public partial class ActionRegistry
 {
     private readonly List<IAction> _allActions;
 
@@ -31,69 +32,59 @@ public class ActionRegistry
             new ConvertTimezoneAction(),
             new UnitConvertAction(),
             new TranslateAction(),
-            new DictionaryAction(),
+            // new DictionaryAction(),
             new CurrencyConverterAction(),
             new CleanLinkAction(),
 
-            // Transform actions
-            // DeleteTextAction and PastePlainTextAction live in TransformActions/ because their
-            // Category is Transform, but they're shape-wise different from the case/whitespace
-            // family below (single-effect actions, not pure text-to-text transforms). Listed
-            // first so they sort to the top of the Transform group in the toolbar.
-            new DeleteTextAction(),
-            new PastePlainTextAction(),
+            // 转换操作
+            new CaseTransformAction("upper", "全大写", "", text => text.ToUpperInvariant()),
+            new CaseTransformAction("lower", "全小写", "", text => text.ToLowerInvariant()),
+            new CaseTransformAction("title", "标题式", "", ToTitleCase),
+            new CaseTransformAction("pascal", "大驼峰式", "", ToPascalCase),
+            new CaseTransformAction("camel", "小驼峰式", "", ToCamelCase),
+            new CaseTransformAction("snake", "下_划_线", "", ToSnakeCase),
+            new CaseTransformAction("kebab", "短-横-线", "", ToKebabCase),
+            new CaseTransformAction("reverse", "反转", "", ReverseGraphemes),
+            
+            new WhitespaceAction("trim", "去除首尾空格", text => text.Trim()),
+            new WhitespaceAction("remove_extra_spaces", "去除多余空格", text => MyRegex1().Replace(text, " ")),
+            new WhitespaceAction("sort_lines", "排序行", text => SortLines(text, distinct: false)),
+            new WhitespaceAction("dedup_lines", "去除重复项", text => SortLines(text, distinct: true)),
+            new WhitespaceAction("remove_linebreaks", "去除换行符", text => MyRegex().Replace(text, " ").Trim()),
 
-            new CaseTransformAction("upper", "UPPERCASE", "IconUppercase", text => text.ToUpperInvariant()),
-            new CaseTransformAction("lower", "lowercase", "IconLowercase", text => text.ToLowerInvariant()),
-            new CaseTransformAction("title", "Title Case", "IconTitleCase", ToTitleCase),
-            new CaseTransformAction("camel", "camelCase", "IconCamelCase", ToCamelCase),
-            new CaseTransformAction("snake", "snake_case", "IconSnakeCase", ToSnakeCase),
-            new CaseTransformAction("kebab", "kebab-case", "IconKebabCase", ToKebabCase),
-            new CaseTransformAction("pascal", "PascalCase", "IconPascalCase", ToPascalCase),
-            new CaseTransformAction("reverse", "Reverse", "IconReverse", ReverseGraphemes),
-
-            new WhitespaceAction("trim", "Trim", text => text.Trim()),
-            new WhitespaceAction("remove_extra_spaces", "Remove Extra Spaces",
-                text => System.Text.RegularExpressions.Regex.Replace(text, @" {2,}", " ")),
-            new WhitespaceAction("sort_lines", "Sort Lines", text => SortLines(text, distinct: false)),
-            new WhitespaceAction("dedup_lines", "Remove Duplicates", text => SortLines(text, distinct: true)),
-            new WhitespaceAction("remove_linebreaks", "Remove Line Breaks",
-                text => System.Text.RegularExpressions.Regex.Replace(text, @"[\r\n]+", " ").Trim()),
-
-            // Encoding actions
-            new EncodingAction("url_encode", "URL Encode", "IconEncode",
-                text => Uri.EscapeDataString(text)),
-            new EncodingAction("url_decode", "URL Decode", "IconDecode",
-                text => Uri.UnescapeDataString(text)),
-            new EncodingAction("base64_encode", "Base64 Encode", "IconEncode",
+            // 包围操作
+            new WrapAction("wrap_backticks", "` `", "`", "`"),
+            new WrapAction("wrap_single_quotes", "' '", "'", "'"),
+            new WrapAction("wrap_quotes", "\" \"", "\"", "\""),
+            new WrapAction("wrap_parens", "( )", "(", ")"),
+            new WrapAction("wrap_brackets", "[ ]", "[", "]"),
+            new WrapAction("wrap_braces", "{ }", "{", "}"),
+            new WrapAction("wrap_chinese_quotes", "「」", "「", "」"),
+            
+            // 编码操作
+            new EncodingAction("url_encode", "URL编码", "", Uri.EscapeDataString),
+            new EncodingAction("url_decode", "URL解码", "", Uri.UnescapeDataString),
+            new EncodingAction("base64_encode", "Base64编码", "",
                 text => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text))),
-            new EncodingAction("base64_decode", "Base64 Decode", "IconDecode",
+            new EncodingAction("base64_decode", "Base64解码", "",
                 text => new System.Text.UTF8Encoding(false, true).GetString(Convert.FromBase64String(text))),
-            new EncodingAction("html_encode", "HTML Encode", "IconEncode",
+            new EncodingAction("html_encode", "HTML编码", "",
                 text => System.Net.WebUtility.HtmlEncode(text)),
-            new EncodingAction("html_decode", "HTML Decode", "IconDecode",
+            new EncodingAction("html_decode", "HTML解码", "",
                 text => System.Net.WebUtility.HtmlDecode(text)),
-
-            // Wrap actions
-            new WrapAction("wrap_quotes", "Wrap \"quotes\"", "\"", "\""),
-            new WrapAction("wrap_single_quotes", "Wrap 'quotes'", "'", "'"),
-            new WrapAction("wrap_parens", "Wrap (parens)", "(", ")"),
-            new WrapAction("wrap_brackets", "Wrap [brackets]", "[", "]"),
-            new WrapAction("wrap_braces", "Wrap {braces}", "{", "}"),
-            new WrapAction("wrap_backticks", "Wrap `backticks`", "`", "`"),
-
+            
             // Hex / ROT13
-            new EncodingAction("hex_encode", "Hex Encode", "IconEncode",
+            new EncodingAction("hex_encode", "Hex编码", "",
                 text => Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(text)).ToLowerInvariant()),
-            new EncodingAction("hex_decode", "Hex Decode", "IconDecode",
+            new EncodingAction("hex_decode", "Hex解码", "",
                 text => new System.Text.UTF8Encoding(false, true).GetString(Convert.FromHexString(text.Trim()))),
-            new EncodingAction("rot13", "ROT13", "IconEncode", Rot13),
+            new EncodingAction("rot13", "ROT13", "", Rot13),
 
-            // Hash actions
-            new EncodingAction("md5", "MD5", "IconHash", text => Hash(System.Security.Cryptography.MD5.HashData, text)),
-            new EncodingAction("sha1", "SHA-1", "IconHash", text => Hash(System.Security.Cryptography.SHA1.HashData, text)),
-            new EncodingAction("sha256", "SHA-256", "IconHash", text => Hash(System.Security.Cryptography.SHA256.HashData, text)),
-            new EncodingAction("sha512", "SHA-512", "IconHash", text => Hash(System.Security.Cryptography.SHA512.HashData, text)),
+            // 哈希操作
+            new EncodingAction("md5", "MD5", "", text => Hash(System.Security.Cryptography.MD5.HashData, text)),
+            new EncodingAction("sha1", "SHA-1", "", text => Hash(System.Security.Cryptography.SHA1.HashData, text)),
+            new EncodingAction("sha256", "SHA-256", "", text => Hash(System.Security.Cryptography.SHA256.HashData, text)),
+            new EncodingAction("sha512", "SHA-512", "", text => Hash(System.Security.Cryptography.SHA512.HashData, text)),
 
         ];
     }
@@ -158,48 +149,77 @@ public class ActionRegistry
             if (!disabled.Contains(action.Id) && action.CanExecute(text, analysis)) applicable.Add(action);
         }
 
-        var contextActions = applicable.Where(a => a.Category == ActionCategory.Context).ToList();
+        // 翻译动作是 Context 类别但独立成组（工具栏翻译按钮的显示开关）；从上下文组剔除，
+        // 避免 translate 同时在 Context/Translate 两组出现导致重复渲染。
+        var contextActions = applicable.Where(a => a.Category == ActionCategory.Context && a.Id != "translate").ToList();
 
-        // User-authored recipe actions — data-driven from settings, same as the search engines.
-        foreach (var ua in s.UserActions)
+        // 自定义操作：脚本动作（Code 内嵌或 ScriptFile 独立文件）按 JS 脚本（Transform），否则按 URL 模板（Context）。
+        if (s.EnableCustomActions)
         {
-            if (!ua.Enabled) continue;
-            var action = new UserActions.UserRecipeAction(ua);
-            if (action.CanExecute(text, analysis) && !disabled.Contains(action.Id))
-                contextActions.Add(action);
+            foreach (var ua in s.UserActions.Where(u => u.Enabled))
+            {
+                IAction action = IsScriptAction(ua)
+                    ? new UserActions.UserScriptAction(ua)
+                    : new UserActions.UserRecipeAction(ua);
+                if (action.CanExecute(text, analysis) && !disabled.Contains(action.Id))
+                {
+                    if (action.Category == ActionCategory.Context) contextActions.Add(action);
+                    else
+                    {
+                        applicable.Add(action);
+                        // 配了「上下文触发」正则的 JS 脚本动作：命中选区时同时作为上下文动作内联显示
+                        //（ContextSeparator 后那一排），但仍留在 Transform 组里，转换子菜单照旧可用。
+                        if (action is UserActions.UserScriptAction script && script.IsContextTriggered(text))
+                            contextActions.Add(action);
+                    }
+                }
+            }
         }
 
         if (contextActions.Count > 0)
-            groups.Add(new ActionGroup("Context", "IconContext", contextActions));
+            groups.Add(new ActionGroup("Context", "", contextActions));
+        if (s.ShowPasteActions)
+        {
+            var list = applicable.Where(a => a.Category == ActionCategory.Paste).ToList();
+            if (list.Count > 0) groups.Add(new ActionGroup("Paste", "", list));
+        }
+        if (s.ShowTranslateActions)
+        {
+            // 仅翻译动作进入 Translate 组；不可用 Transform 类别过滤，否则会把所有文本转换
+            // 动作重复塞进 Translate 组，造成工具栏/调色板同一动作出现两次。
+            var list = applicable.Where(a => a.Id == "translate").ToList();
+            if (list.Count > 0) groups.Add(new ActionGroup("Translate", "", list));
+        }
 
         if (s.ShowTransformActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Transform).ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Transform", "IconTransform", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Transform", "", list));
         }
         if (s.ShowEncodeActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Encode).ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Encode", "IconEncode", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Encode", "", list));
         }
+
         if (s.ShowSearchActions && !string.IsNullOrEmpty(text.Trim()))
         {
             var lang = s.SearchLanguage ?? "";
             var searchActions = s.SearchEngines
                 .Where(e => e.Enabled && !disabled.Contains($"search_{e.Id}"))
                 .Select(e => (IAction)new SearchActions.WebSearchAction(
-                    e.Id, e.Name, "IconSearch", e.UrlTemplate,
+                    e.Id, e.Name, "", e.UrlTemplate,
                     e.UseLanguageFilter ? lang : "", e.LangMode))
                 .ToList();
             if (searchActions.Count > 0)
-                groups.Add(new ActionGroup("Search", "IconSearch", searchActions));
+                groups.Add(new ActionGroup("Search", "", searchActions));
         }
 
         return groups;
     }
 
-    /// <summary>Pins keep their order across selections and category-menu preferences.
-    /// Inapplicable pins stay visible; the toolbar explains why they cannot run.</summary>
+    /// <summary>图钉在选择和类别菜单偏好中保持顺序。
+    /// 不适用的引脚仍然可见；工具栏解释了它们无法运行的原因。</summary>
     internal List<IAction> GetPinnedActions(string? appName = null)
     {
         var settings = Config.SettingsManager.Current;
@@ -230,17 +250,26 @@ public class ActionRegistry
             var lang = Config.SettingsManager.Current.SearchLanguage ?? "";
             return Config.SettingsManager.Current.SearchEngines
                 .Select(e => (IAction)new SearchActions.WebSearchAction(
-                    e.Id, e.Name, "IconSearch", e.UrlTemplate,
+                    e.Id, e.Name, "", e.UrlTemplate,
                     e.UseLanguageFilter ? lang : "", e.LangMode))
                 .ToList();
         }
         var actions = _allActions.Where(a => a.Category == category).ToList();
+        var userActions = Config.SettingsManager.Current.EnableCustomActions
+            ? Config.SettingsManager.Current.UserActions
+            : [];
         if (category == ActionCategory.Transform)
             actions.AddRange(Config.SettingsManager.Current.TextRecipes.Select(r => new UserActions.TextRecipeAction(r, PureTextOperations())));
         if (category == ActionCategory.Context)
-            actions.AddRange(Config.SettingsManager.Current.UserActions.Select(a => new UserActions.UserRecipeAction(a)));
+            actions.AddRange(userActions.Where(a => !IsScriptAction(a)).Select(a => new UserActions.UserRecipeAction(a)));
+        if (category == ActionCategory.Transform)
+            actions.AddRange(userActions.Where(a => IsScriptAction(a)).Select(a => new UserActions.UserScriptAction(a)));
         return actions;
     }
+
+    /// <summary>脚本动作判定：Code 内嵌或 ScriptFile 独立文件任一非空即为脚本动作。</summary>
+    private static bool IsScriptAction(Config.UserAction ua) =>
+        !string.IsNullOrWhiteSpace(ua.Code) || !string.IsNullOrWhiteSpace(ua.ScriptFile);
 
     // Text transformation helpers
     private static string ToTitleCase(string text) =>
@@ -332,6 +361,11 @@ public class ActionRegistry
         if (current.Length > 0) result.Add(current.ToString());
         return result.Where(w => w.Length > 0).ToArray();
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[\r\n]+")]
+    private static partial System.Text.RegularExpressions.Regex MyRegex();
+    [System.Text.RegularExpressions.GeneratedRegex(@" {2,}")]
+    private static partial System.Text.RegularExpressions.Regex MyRegex1();
 }
 
 public record ActionGroup(string Name, string IconKey, List<IAction> Actions);

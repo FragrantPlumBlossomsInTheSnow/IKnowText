@@ -14,15 +14,15 @@ public sealed class TextRecipeAction(TextRecipeDefinition recipe, IReadOnlyDicti
 
     public ActionResult Execute(string text, TextAnalysis analysis)
     {
-        if (!CanExecute(text, analysis)) return new(false, Message: "Recipes require 1–12 text operations.");
+        if (!CanExecute(text, analysis)) return new(false, Message: "至少1个文本操作。");
         foreach (var id in recipe.Steps)
         {
             if (!operations.TryGetValue(id, out var action) || !action.IsPreviewSafe || action is IOperationAction)
-                return new(false, Message: "A recipe step is unavailable. Edit this recipe in Settings.");
+                return new(false, Message: "方案不可用！在“设置”中编辑此方案。");
             var result = action.Execute(text, TextAnalysis.PlainText);
             if (!result.Success || result.ResultText == null) return new(false, Message: result.Message ?? $"{action.Name} failed");
             text = result.ResultText;
-            if (text.Length > 128 * 1024) return new(false, Message: "Recipe output exceeds 128K characters.");
+            if (text.Length > 128 * 1024) return new(false, Message: "输出超过128K个字符！");
         }
         return new(true, text, Name);
     }

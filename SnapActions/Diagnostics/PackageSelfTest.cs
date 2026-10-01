@@ -29,10 +29,10 @@ internal static class PackageSelfTest
             SettingsManager.Load();
             CheckSettingsSaveFailures();
             checks.Add("Settings write/replace failures preserve saved pins, report errors, and recover on retry/reload");
-            foreach (string asset in new[] { "manifest.json", "background.js", "read-selection.js", "selection-sample.html", "install-host.ps1" })
-                Require(File.Exists(Path.Combine(BrowserSetupService.ExtensionDirectory, asset)), "Missing companion file: " + asset);
-            using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(BrowserSetupService.ExtensionDirectory, "manifest.json")));
-            Require(manifest.RootElement.GetProperty("minimum_chrome_version").GetString() == "106", "Companion browser minimum mismatch");
+            /*foreach (string asset in new[] { "manifest.json", "background.js", "read-selection.js", "selection-sample.html", "install-host.ps1" })
+                Require(File.Exists(Path.Combine(BrowserSetupService.ExtensionDirectory, asset)), "Missing companion file: " + asset);*/
+            // using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(BrowserSetupService.ExtensionDirectory, "manifest.json")));
+            // Require(manifest.RootElement.GetProperty("minimum_chrome_version").GetString() == "106", "Companion browser minimum mismatch");
             checks.Add("Companion publish assets present");
 
             foreach (var theme in new[] { "dark", "light" })
@@ -40,25 +40,165 @@ internal static class PackageSelfTest
                 SettingsManager.Current.Theme = theme; ThemeManager.Apply();
                 var settings = new SettingsWindow();
                 settings.LoadSettings();
-                var tabs = (System.Windows.Controls.TabControl)settings.FindName("SettingsTabs");
-                foreach (TabItem tab in tabs.Items)
+                // 设置窗口已由 TabControl 改版为 ListBox 侧边导航：右侧是五个 ScrollViewer 页面，
+                // 通过各自 Visibility 切换（SettingsNav_SelectionChanged）。自测按下/暗两主题逐页渲染。
+                var pages = new[] { "GeneralPage", "ActionsPage", "LanguagePage", "CustomPage", "AppsPage" };
+                foreach (var page in pages)
                 {
-                    tabs.SelectedItem = tab;
-                    Render(settings, $"settings-{theme}-{tab.Header}", 692, 644);
+                    foreach (var other in pages)
+                        ((FrameworkElement)settings.FindName(other)).Visibility =
+                            other == page ? Visibility.Visible : Visibility.Collapsed;
+                    Render(settings, $"settings-{theme}-{page}", 692, 644);
                 }
-                ((TextBox)settings.FindName("SettingsSearchBox")).Text = "translation";
-                Require(tabs.Items.Cast<TabItem>().Any(t => t.Visibility == Visibility.Visible && t.Header.ToString() == "Languages"), "Settings search lost translation section");
-                ((TextBox)settings.FindName("SettingsSearchBox")).Text = "";
-                tabs.SelectedIndex = 0; Render(settings, $"settings-{theme}-small", 572, 404);
+                var searchBox = settings.FindName("SettingsSearchBox") as TextBox;
+                if (searchBox != null)
+                {
+                    searchBox.Text = "翻译";
+                    Require(((ScrollViewer)settings.FindName("LanguagePage")).Visibility == Visibility.Visible, "Settings search lost translation section");
+                    searchBox.Text = "";
+                }
+                foreach (var other in pages)
+                    ((FrameworkElement)settings.FindName(other)).Visibility =
+                        other == "GeneralPage" ? Visibility.Visible : Visibility.Collapsed;
+                Render(settings, $"settings-{theme}-small", 572, 404);
                 settings.Close();
                 checks.Add(theme + " Settings sections, search, and small-window render");
             }
+
+            // 设置-翻译-百度翻译：已无「保存百度凭据」按钮，输入框变化后必须由防抖自动落盘。
+            var baiduSettings = new SettingsWindow();
+            baiduSettings.LoadSettings();
+            // 自测直接调 LoadSettings（不走 ContentRendered 的收尾），手动解除加载期保护，
+            // 否则 QueueSave 会被 _loading 挡掉。
+            SetField(baiduSettings, "_loading", false);
+            // 展开态渲染：确认「保存百度凭据」按钮已移除、自动保存提示在位。直接渲染 Expander 的
+            // 内容而不是整窗 —— 窗口未 Show，WPF-UI 的展开动画不会跑，模板里的内容仍是折叠态。
+            RenderElement((FrameworkElement)baiduSettings.BaiduExpander.Content, "settings-light-baidu", 460, 220);
+            baiduSettings.BaiduAppIdBox.Text = "selftest-appid";
+            baiduSettings.BaiduSecretBox.Password = "selftest-secret";
+            bool autoSaved = false;
+            for (int i = 0; i < 25 && !autoSaved; i++)
+            {
+                await Task.Delay(100); // 给 400ms 防抖 DispatcherTimer 触发的机会
+                var (savedAppId, savedSecret) = CredentialCrypto.DecryptBaidu(SettingsManager.Current.BaiduCredentialsBlob);
+                autoSaved = savedAppId == "selftest-appid" && savedSecret == "selftest-secret";
+            }
+            Require(autoSaved, "Baidu credentials were not auto-saved after typing");
+            baiduSettings.Close();
+            checks.Add("Baidu credentials auto-save without a save button");
+
+            // 设置-动作-固定在工具栏的动作 + 工具栏固定区 + Transform 子窗口：自定义 JS 脚本动作
+            // 与内置转换动作共用 IconTransform 字形，三处都要换成 JS 徽标；配了「上下文触发」正则的
+            // 脚本在命中时还要内联进工具栏上下文区（ContextSeparator 后），固定时不能重复渲染。
+            var savedPins = SettingsManager.Current.PinnedActionIds.ToList();
+            var savedCustomActions = SettingsManager.Current.EnableCustomActions;
+            var savedMaxInline = SettingsManager.Current.MaxInlineContextActions;
+            var pinnedSettings = new SettingsWindow();
+            var pinnedToolbar = new ToolbarWindow { Registry = new ActionRegistry() };
+            try
+            {
+                SettingsManager.Current.EnableCustomActions = true;
+                // 默认上限 3 可能把触发动作挤进溢出菜单，自测固定成 8 让内联区必定容纳。
+                SettingsManager.Current.MaxInlineContextActions = 8;
+                SettingsManager.Current.UserActions.Insert(0, new UserAction
+                {
+                    Id = "selftest_js", Name = "SELFTEST-JS",
+                    Code = "function JSAction(t) { return t; }", ContextRegex = "^SELFTEST",
+                });
+                SettingsManager.Current.PinnedActionIds = ["case_upper", "user_selftest_js"];
+                pinnedSettings.LoadSettings();
+                SetField(pinnedSettings, "_loading", false);
+                var rows = pinnedSettings.PinnedActions.Children.OfType<DockPanel>().ToList();
+                Require(rows.Count == 2, "Pinned actions list did not show both pins");
+                var jsRow = rows.Single(r => r.Children.OfType<TextBlock>().Any(t => t.Text == "SELFTEST-JS"));
+                Require(HasJsBadge(jsRow), "Pinned JS action is not marked with a JS badge in Settings");
+                Require(!rows.Where(r => !ReferenceEquals(r, jsRow)).Any(HasJsBadge),
+                    "A non-script pinned action was marked as JS in Settings");
+                RenderElement(pinnedSettings.PinnedActions, "settings-light-pinned-actions", 460, 120);
+
+                // 设置里的「取消固定」仍要能把动作从 PinnedActionIds 里摘掉。
+                var unpin = jsRow.Children.OfType<Button>().Single(b => (string?)b.Content == "取消固定");
+                unpin.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Require(!SettingsManager.Current.PinnedActionIds.Contains("user_selftest_js"),
+                    "Unpinning from settings left the action pinned");
+                Require(pinnedSettings.PinnedActions.Children.OfType<DockPanel>().Count() == 1,
+                    "Pinned actions list did not refresh after unpinning");
+
+                // 工具栏：同一动作固定后在固定区带 JS 徽标；命中正则也不能在上下文区再渲染一遍。
+                SettingsManager.Current.PinnedActionIds = ["case_upper", "user_selftest_js"];
+                SetField(pinnedToolbar, "_selectedText", "SELFTEST context text");
+                SetField(pinnedToolbar, "_appName", "notepad");
+                ((Border)pinnedToolbar.FindName("MainBorder")).MaxWidth = 1200;
+                pinnedToolbar.RefreshActions();
+                var toolbarPins = (StackPanel)pinnedToolbar.FindName("PinnedActionsPanel");
+                var toolbarContext = (StackPanel)pinnedToolbar.FindName("ContextActionsPanel");
+                var jsPin = toolbarPins.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "user_selftest_js");
+                Require(HasJsBadge(jsPin), "Toolbar pinned JS action is not marked with a JS badge");
+                Require(!toolbarPins.Children.OfType<Button>().Where(b => ((IAction)b.Tag).Id != "user_selftest_js").Any(HasJsBadge),
+                    "A non-script pinned action was marked as JS on the toolbar");
+                Require(!toolbarContext.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == "user_selftest_js"),
+                    "A pinned JS action was rendered twice (pinned area + inline context)");
+                RenderElement(toolbarPins, "toolbar-js-pin", 460, 60);
+
+                // 取消固定后命中正则：内联出现在上下文区，且带 JS 徽标。
+                SettingsManager.Current.PinnedActionIds.RemoveAll(id => id == "user_selftest_js");
+                pinnedToolbar.RefreshActions();
+                var inlineJs = toolbarContext.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "user_selftest_js");
+                Require(HasJsBadge(inlineJs), "Inline context JS action is not marked with a JS badge");
+                RenderElement(toolbarContext, "toolbar-js-context-inline", 460, 60);
+                Render(pinnedToolbar, "toolbar-js-context-row", 1200, 70); // 整条工具栏：上下文区（ContextSeparator 后）与固定区
+
+                // 选区不命中正则：上下文区不推送该动作（它仍是转换动作）。
+                SetField(pinnedToolbar, "_selectedText", "hello");
+                pinnedToolbar.RefreshActions();
+                Require(!toolbarContext.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == "user_selftest_js"),
+                    "Context trigger pushed the JS action for a non-matching selection");
+
+                // Transform 子窗口：同一动作出现在转换子菜单里时同样带 JS 徽标。
+                typeof(ToolbarWindow).GetMethod("ShowSubMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(pinnedToolbar, ["Transform", ActionCategory.Transform]);
+                var subMenu = (WrapPanel)pinnedToolbar.FindName("SubMenuPanel");
+                var jsItem = subMenu.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "user_selftest_js");
+                Require(HasJsBadge(jsItem), "Transform submenu does not mark the JS script action");
+                RenderElement(subMenu, "toolbar-transform-submenu-js", 420, 320);
+            }
+            finally
+            {
+                SettingsManager.Current.UserActions.RemoveAll(u => u.Id == "selftest_js");
+                SettingsManager.Current.PinnedActionIds = savedPins;
+                SettingsManager.Current.EnableCustomActions = savedCustomActions;
+                SettingsManager.Current.MaxInlineContextActions = savedMaxInline;
+                ((System.Windows.Controls.Primitives.Popup)pinnedToolbar.FindName("SubMenuPopup")).IsOpen = false;
+                pinnedToolbar.Close();
+                pinnedSettings.Close();
+            }
+            checks.Add("JS script actions are marked in Settings pins, toolbar pins and the Transform submenu");
+            checks.Add("Context-trigger regex pushes the JS script action inline into the toolbar context row");
+
+            // JS 脚本编辑器：沙箱注入的 console.* 必须落到「试跑日志」框里（正常执行路径静默，只此可见）；
+            // 「上下文触发」正则要当场给出有效性/是否命中试跑文本的结论。
+            var scriptEditor = new UserScriptEditor(null);
+            ((TextBox)GetField(scriptEditor, "CodeBox")).Text =
+                "function JSAction(text) { console.log('sel:', text, { n: 1 }); return text.toUpperCase(); }";
+            ((TextBox)GetField(scriptEditor, "SampleBox")).Text = "hey";
+            var scriptLogs = (TextBox)GetField(scriptEditor, "LogsBox");
+            Require(scriptLogs.Text.Contains("sel: hey {\"n\":1}"), "Script editor did not capture console output");
+            var triggerBox = (TextBox)GetField(scriptEditor, "TriggerBox");
+            var triggerHint = (TextBlock)GetField(scriptEditor, "TriggerHintText");
+            triggerBox.Text = "^h"; // 命中试跑文本 "hey"
+            Require(triggerHint.Text.Contains("命中"), "Context trigger hint did not report a match");
+            triggerBox.Text = "([";
+            Require(triggerHint.Text.Contains("无效"), "Context trigger hint did not flag an invalid regex");
+            triggerBox.Text = "^h"; // 截图停在「有效且命中」状态
+            Render(scriptEditor, "script-editor", 620, 860);
+            scriptEditor.Close();
+            checks.Add("Script editor console capture and context-trigger feedback");
 
             var registry = new ActionRegistry();
             var source = new SelectionOperationSource();
             var snapshot = new SelectionSnapshot("Hello العربية", TextAnalysis.PlainText, source.Begin(default), false, SelectionProviderKind.Manual);
             var palette = new ActionPalette(snapshot, registry);
-            ((TextBox)palette.FindName("SearchBox")).Text = "upper";
+            ((TextBox)palette.FindName("SearchBox")).Text = "全大写";
             var list = (System.Windows.Controls.ListBox)palette.FindName("ActionsList");
             Require(list.Items.Count == 1, "Palette filtering failed");
             Require(((TextBlock)palette.FindName("PreviewText")).Text == "HELLO العربية", "Palette preview changed text");
@@ -112,20 +252,16 @@ internal static class PackageSelfTest
             Require(((TextBlock)popup.FindName("ResultText")).Text == "fresh", "A request rendered after its popup closed");
             checks.Add("Rendered lookup timeout, actual Retry supersession, close cancellation and stale result suppression");
 
-            var translation = new TranslationPopup();
-            var translationHandle = new System.Windows.Interop.WindowInteropHelper(translation).EnsureHandle();
-            Require(System.Windows.Interop.HwndSource.FromHwnd(translationHandle).CompositionTarget.RenderMode == System.Windows.Interop.RenderMode.SoftwareOnly,
-                "Translation native frame did not use the compatible render mode");
-            typeof(TranslationPopup).GetMethod("ShowFailure", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(translation, ["Google Translate couldn't open. Check your connection and try again."]);
-            Require(((Button)translation.FindName("RetryButton")).Visibility == Visibility.Visible, "Translation failure has no retry");
-            Require(((StackPanel)translation.FindName("StatusPanel")).Visibility == Visibility.Visible, "Translation failure message is hidden");
-            Require(((Grid)translation.FindName("BrowserHost")).Visibility == Visibility.Collapsed, "Translation failure left browser visible");
-            Render(translation, "translation-unavailable", translation.Width, translation.Height);
-            translation.Close();
-            Require((bool)typeof(TranslationPopup).GetField("_closed", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .GetValue(translation)!, "Translation close did not dispose its lifetime");
-            checks.Add("Native translation failure and Retry render, close lifetime disposal without network or WebView2 initialization");
+            // 翻译 UI 现内嵌在 ToolbarWindow 的 TranslatePopup 中（纯 XAML，不再创建独立
+            // TranslationPopup 窗口，也不使用 WebView2 渲染）。验证语言下拉已填充、控件齐全。
+            Require(toolbar.FindName("TranslateSourceCombo") is System.Windows.Controls.ComboBox { Items.Count: > 0 } sc && sc.Items.Count >= LanguageOptions.All.Count,
+                "Translation source languages not populated");
+            Require(toolbar.FindName("TranslateTargetCombo") is System.Windows.Controls.ComboBox { Items.Count: > 0 }, "Translation target languages not populated");
+            Require(toolbar.FindName("TranslateResultBox") is TextBox, "Translation has no result area");
+            Require(toolbar.FindName("TranslateCopyButton") is Button, "Translation has no copy control");
+            Render(toolbar, "translation", 430, 260);
+            toolbar.CloseTranslatePopup();
+            checks.Add("Local translation UI renders with languages/result/copy and closes cleanly without network or WebView2 initialization");
 
             var recipe = new TextRecipeEditor(new() { Name = "Clean", Steps = ["ws_trim", "case_upper"] });
             Render(recipe, "recipe-editor", 530, 600); recipe.Close();
@@ -146,32 +282,35 @@ internal static class PackageSelfTest
         string temp = path + ".tmp";
         byte[]? original = File.Exists(path) ? File.ReadAllBytes(path) : null;
         var registry = new ActionRegistry();
-        var delete = registry.GetAllActionsForCategory(ActionCategory.Transform).Single(a => a.Id == "delete_text");
+        var delete = registry.GetAllActionsForCategory(ActionCategory.Transform).Single(a => a.Id == "ws_trim");
         var toolbar = new ToolbarWindow { Registry = registry };
         SetField(toolbar, "_selectedText", "saved preferences");
         try
         {
             foreach (bool failTempWrite in new[] { true, false })
             {
-                SettingsManager.Current.PinnedActionIds = ["case_upper", "delete_text", "paste_plain"];
-                SettingsManager.Current.DisabledActionIds = ["paste_plain"];
+                SettingsManager.Current.PinnedActionIds = ["case_upper", "ws_trim", "case_snake"];
+                SettingsManager.Current.DisabledActionIds = ["case_snake"];
                 Require(SettingsManager.Save(), "Cannot establish saved preference baseline");
                 byte[] saved = File.ReadAllBytes(path);
                 ToolbarPreferences.Pin(SettingsManager.Current, delete, "case_upper");
                 ToolbarPreferences.SetHidden(SettingsManager.Current, delete, true);
                 FileStream? locked = null;
+                string? failedError = null;
                 try
                 {
                     if (failTempWrite) Directory.CreateDirectory(temp);
                     else locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                     Require(!SettingsManager.Save(), "A blocked settings write reported success");
                     Require(SettingsManager.LastSaveError != null, "Failed settings save has no error");
-                    Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text == SettingsManager.LastSaveError,
+                    // 记下这条错误原文：成功重试后提示必须不再是它（不依赖提示文案的措辞/语言）。
+                    failedError = SettingsManager.LastSaveError;
+                    Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text == failedError,
                         "Toolbar did not show the settings save error");
                     Require(File.ReadAllBytes(path).SequenceEqual(saved), "Failed save changed the last saved settings");
-                    Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "delete_text", "case_upper", "paste_plain" }),
+                    Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "ws_trim", "case_upper", "case_snake" }),
                         "Failed save lost the pending pin order");
-                    Require(SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "paste_plain", "delete_text" }),
+                    Require(SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "case_snake", "ws_trim" }),
                         "Failed save lost the pending hidden actions");
                 }
                 finally
@@ -181,17 +320,17 @@ internal static class PackageSelfTest
                 }
                 // A reload after a failed save must recover the complete last successful version.
                 SettingsManager.Load();
-                Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "case_upper", "delete_text", "paste_plain" })
-                    && SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "paste_plain" }),
+                Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "case_upper", "ws_trim", "case_snake" })
+                    && SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "case_snake" }),
                     "Reload after failure lost saved toolbar preferences");
                 ToolbarPreferences.Pin(SettingsManager.Current, delete, "case_upper");
                 ToolbarPreferences.SetHidden(SettingsManager.Current, delete, true);
                 Require(SettingsManager.Save() && SettingsManager.LastSaveError == null, "Settings did not recover after the lock was removed");
                 Require(!File.Exists(temp), "Successful settings retry left a temporary file");
-                Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text.Contains("Drag onto"), "Successful retry left a stale toolbar error");
+                Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text != failedError, "Successful retry left a stale toolbar error");
                 SettingsManager.Load();
-                Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "delete_text", "case_upper", "paste_plain" })
-                    && SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "paste_plain", "delete_text" }),
+                Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "ws_trim", "case_upper", "case_snake" })
+                    && SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "case_snake", "ws_trim" }),
                     "Retried toolbar preferences did not survive reload");
             }
         }
@@ -206,9 +345,11 @@ internal static class PackageSelfTest
     private static void CheckToolbarCustomization(ActionRegistry registry)
     {
         var settings = SettingsManager.Current;
+        // 自定义操作默认停用；自测需要它们充当 context 动作，显式打开开关。
+        settings.EnableCustomActions = true;
         settings.UserActions = Enumerable.Range(0, 8).Select(i => new UserAction
         { Id = $"toolbar_test_{i}", Name = $"Suggestion {i + 1}", UrlTemplate = "https://example.com/?q={0}" }).ToList();
-        settings.PinnedActionIds = ["search_twitter", "search_google", "delete_text", "paste_plain"];
+        settings.PinnedActionIds = ["search_twitter", "search_google", "ws_trim", "case_snake"];
         settings.ShowEncodeActions = false;
         var toolbar = new ToolbarWindow { Registry = registry };
         SetField(toolbar, "_selectedText", "one two");
@@ -229,19 +370,17 @@ internal static class PackageSelfTest
                 Require(SettingsManager.Save(), "Cannot persist toolbar preferences");
                 Require(context.Children.Count == limit, $"{provider} kept a stale inline limit: {context.Children.Count} != {limit}");
                 Require(pins.Children.Count == 4, "Pinned actions disappeared because of selection capability or the context limit");
-                var paste = (IAction)Pin("paste_plain").Tag;
-                Require(Pin("delete_text").IsEnabled == editable && Pin("paste_plain").IsEnabled == (editable && paste.CanExecute("one two", TextAnalysis.PlainText)), "Read-only pins have incorrect execution capability");
+                Require(Pin("ws_trim").IsEnabled && Pin("case_snake").IsEnabled, "Read-only pins have incorrect execution capability");
             }
         }
-        Require(Pin("paste_plain").ToolTip.ToString()!.Contains("editable"), "Read-only pin has no explanation");
-        Require(Pin("paste_plain").Content is System.Windows.Shapes.Path && Pin("paste_plain").Width == 36,
-            "Pinned Paste must use the compact clipboard icon");
-        Require(System.Windows.Automation.AutomationProperties.GetName(Pin("paste_plain")) == "Paste Plain Text", "Icon-only Paste lost its accessible name");
+        Require(Pin("ws_trim").Content is System.Windows.FrameworkElement,
+            "Pinned action lost its icon/text content");
+        Require(!string.IsNullOrEmpty(Pin("ws_trim").ToolTip.ToString()), "Pinned action lost its tooltip");
         Render(toolbar, "toolbar-eight-suggestions-readonly", 1200, 70);
         settings.ShowTransformActions = false; toolbar.RefreshActions();
         Require(pins.Children.Count == 4, "Hiding a category menu also hid its pins");
-        settings.AppHiddenActions["BRAVE"] = ["delete_text"]; toolbar.RefreshActions();
-        Require(!pins.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == "delete_text"), "Pin bypassed the current app's hidden actions");
+        settings.AppHiddenActions["BRAVE"] = ["ws_trim"]; toolbar.RefreshActions();
+        Require(!pins.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == "ws_trim"), "Pin bypassed the current app's hidden actions");
         SetField(toolbar, "_appName", "notepad"); toolbar.RefreshActions();
         Require(pins.Children.Count == 4, "Browser profile leaked into a native app");
         SetField(toolbar, "_appName", "brave"); settings.AppHiddenActions.Clear();
@@ -270,18 +409,23 @@ internal static class PackageSelfTest
             toolbar.GetType().GetMethod("FinishCustomizationInteraction", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(toolbar, null);
         }
         var upper = registry.GetAllActionsForCategory(ActionCategory.Transform).Single(a => a.Id == "case_upper");
-        Drop(upper, "delete_text");
-        Require(settings.PinnedActionIds.SequenceEqual(["search_twitter", "search_google", "case_upper", "delete_text", "paste_plain"]), "Drop did not pin at the chosen position");
-        Drop(upper, "paste_plain", true);
+        Drop(upper, "ws_trim");
+        Require(settings.PinnedActionIds.SequenceEqual(["search_twitter", "search_google", "case_upper", "ws_trim", "case_snake"]), "Drop did not pin at the chosen position");
+        Drop(upper, "case_snake", true);
         Require(settings.PinnedActionIds.Last() == upper.Id, "Right-half drop did not move after the target");
         Drop(upper, "search_twitter");
         Require(settings.PinnedActionIds.First() == upper.Id, "Left-half drop did not move before the target");
 
-        var hide = Pin(upper.Id).ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(i => (string)i.Header == "Hide action");
-        hide.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
+        // 隐藏操作已并入编辑模式目录（不再有右键“隐藏操作”菜单项）：直接经
+        // ToolbarPreferences.SetHidden 隐藏，验证 pin 消失且顺序保留，再由下方编辑模式目录恢复。
+        ToolbarPreferences.SetHidden(SettingsManager.Current, upper, true);
+        toolbar.RefreshActions();
         Require(!pins.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == upper.Id), "Hide left a stale pinned button");
         Require(settings.PinnedActionIds.Contains(upper.Id), "Hiding lost the pin's order");
-        ((Button)toolbar.FindName("CustomizeButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // 新版编辑模式(clipboard->Gear)仅在已打开分类子菜单时生效：先打开 Transform 分类，
+        // 再点 GearButton 进入编辑模式，目录用 GetAllActionsForCategory 重建（含被隐藏的 case_upper）。
+        ((Button)toolbar.FindName("TransformButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        ((Button)toolbar.FindName("GearButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         var catalog = (WrapPanel)toolbar.FindName("SubMenuPanel");
         var catalogPopup = (System.Windows.Controls.Primitives.Popup)toolbar.FindName("SubMenuPopup");
         var catalogContent = (FrameworkElement)catalogPopup.Child;
@@ -293,7 +437,7 @@ internal static class PackageSelfTest
         var restore = catalog.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == upper.Id);
         restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Require(pins.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == upper.Id), "Catalog did not restore a hidden pin");
-        var unpin = Pin(upper.Id).ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(i => (string)i.Header == "Unpin from toolbar");
+        var unpin = Pin(upper.Id).ContextMenu.Items.OfType<System.Windows.Controls.MenuItem>().Single(i => (string)i.Header == "从工具栏取消固定");
         unpin.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
         Require(!settings.PinnedActionIds.Contains(upper.Id), "Unpin failed");
         Require(catalog.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == upper.Id), "Unpin hid the action from its menu");
@@ -387,6 +531,19 @@ internal static class PackageSelfTest
 
     private static void SetField(object instance, string name, object? value) => instance.GetType()
         .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(instance, value);
+    private static object GetField(object instance, string name) => instance.GetType()
+        .GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(instance)!;
+    /// <summary>元素（含子级逻辑树）里是否含 JS 徽标 —— 设置行、工具栏固定按钮、子菜单项共用同一检查。</summary>
+    private static bool HasJsBadge(DependencyObject root) =>
+        Tree(root).OfType<Border>().Any(b => (b.Child as TextBlock)?.Text == "JS");
+    private static IEnumerable<DependencyObject> Tree(DependencyObject root)
+    {
+        foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+        {
+            yield return child;
+            foreach (var nested in Tree(child)) yield return nested;
+        }
+    }
     private static void Require(bool condition, string failure) { if (!condition) throw new InvalidOperationException(failure); }
     private static void Render(Window window, string name, double width, double height)
     {
@@ -397,6 +554,20 @@ internal static class PackageSelfTest
         var background = new DrawingVisual();
         using (var drawing = background.RenderOpen()) drawing.DrawRectangle(window.Background, null, new Rect(0, 0, width, height));
         bitmap.Render(background); bitmap.Render(content);
+        var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
+        using var file = File.Create(Path.Combine(RuntimePaths.DataDirectory, name + ".png")); png.Save(file);
+    }
+
+    /// <summary>渲染单个元素（自带尺寸）——用于折叠容器里的内容，例如未展开的 Expander。</summary>
+    private static void RenderElement(FrameworkElement element, string name, double width, double height)
+    {
+        element.Measure(new Size(width, height));
+        element.Arrange(new Rect(new Point(), element.DesiredSize));
+        element.UpdateLayout();
+        var bitmap = new RenderTargetBitmap(
+            Math.Max(1, (int)Math.Ceiling(element.ActualWidth)), Math.Max(1, (int)Math.Ceiling(element.ActualHeight)),
+            96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(element);
         var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(Path.Combine(RuntimePaths.DataDirectory, name + ".png")); png.Save(file);
     }

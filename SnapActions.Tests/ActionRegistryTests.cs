@@ -1,9 +1,10 @@
-using SnapActions.Actions;
+﻿using SnapActions.Actions;
 using SnapActions.Config;
 using Xunit;
 
 namespace SnapActions.Tests;
 
+[Collection("RegistryTests")]
 public class ActionRegistryTests
 {
     [Fact]

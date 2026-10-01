@@ -1,3 +1,7 @@
+## Acknowledgements
+
+This project is based on [roko-tech/SnapActions](https://github.com/roko-tech/SnapActions), developed by [M. AL-hejji](https://github.com/rokogan).
+
 # SnapActions
 
 **Useful actions, right where you select text.**
@@ -5,8 +9,6 @@
 SnapActions is a free, open-source toolbar for Windows. Highlight text to translate it, search the web, clean up writing, format code or convert a value. Results and previews stay close to your selection.
 
 [Download for Windows](https://github.com/roko-tech/SnapActions/releases/latest) · [User guide](docs/user-guide.md) · [Browser setup](browser-extension/README.md) · [Release notes](https://github.com/roko-tech/SnapActions/releases)
-
-![SnapActions toolbar above selected text](docs/images/selection-toolbar.png)
 
 ## Get started
 

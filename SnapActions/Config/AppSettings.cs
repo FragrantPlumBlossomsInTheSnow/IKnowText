@@ -158,6 +158,19 @@ public class UserAction
     /// "data.title"); empty shows the raw response.</summary>
     public string JsonField { get; set; } = "";
 
+    /// <summary>JS 脚本动作源码（可选）。非空时该动作作为文本转换脚本执行（选区文本 → JSAction(text)
+    /// → 返回文本），Code 优先于 UrlTemplate；为空保持旧 URL 模板行为以兼容旧 settings.json。</summary>
+    public string Code { get; set; } = "";
+
+    /// <summary>脚本动作代码存储为数据目录 scripts\ 下的独立 .js 文件，此字段存文件名；
+    /// 非空时优先读文件（避免多行代码/引号在 JSON 中转义出错），为空回退内嵌 Code（旧数据兼容）。</summary>
+    public string ScriptFile { get; set; } = "";
+
+    /// <summary>「上下文触发」正则（可选，仅 JS 脚本动作用）：非空且命中当前选区时，该脚本动作会像
+    /// 内置的数学计算/格式化 JSON 一样内联出现在工具栏上下文区（ContextSeparator 后）；留空则只作为
+    /// 文本转换动作。非法正则/回溯超时按「不命中」处理（见 ContextTriggerRegex）。</summary>
+    public string ContextRegex { get; set; } = "";
+
     public bool Enabled { get; set; } = true;
 }
 
@@ -165,6 +178,8 @@ public class AppSettings
 {
     public bool AutoStart { get; set; } = false;
     public bool Enabled { get; set; } = true;
+    public bool SelectCopy { get; set; } = false;
+    public bool HoverOpen { get; set; } = false;
     public int ToolbarDismissTimeout { get; set; } = 8000;
     /// <summary>Delay in ms before showing toolbar after selection (0 = instant).</summary>
     public int ToolbarShowDelay { get; set; } = 0;
@@ -222,24 +237,50 @@ public class AppSettings
     /// </summary>
     public bool CaptureOnCtrlC { get; set; } = false;
 
+    /// <summary>
+    /// Allow the synthetic-copy chord (Ctrl+Insert → Ctrl+C) as a *fallback* after UI Automation
+    /// has failed to expose the selection (Java Swing IDEs, some Chromium content), at the cost of
+    /// a brief clipboard mutation and a SendInput keystroke. UIA stays the primary path either way.
+    /// Defaults to true to match v2.4.x behavior (fallback always engaged); only when the user
+    /// explicitly turns it off is capture UIA-only (never injects keys).
+    /// </summary>
+    public bool UseSyntheticKeys { get; set; } = true;
+    public bool ShowPasteActions { get;  set; } = true;
+    public bool ShowTranslateActions { get; set; } = true;
     public bool ShowTransformActions { get; set; } = true;
     public bool ShowEncodeActions { get; set; } = true;
+    public bool ShowSurroundActions { get; set; } = true;
     public bool ShowSearchActions { get; set; } = true;
 
     /// <summary>Language code for search filtering (e.g. "en", "ar", "ja", ""). Empty = no filter.</summary>
     public string SearchLanguage { get; set; } = "";
-
+    public string ExcludeRegex { get; set; } = "";
     public string TranslationSourceLanguage { get; set; } = "";
+    /// <summary>When true, the translation source defaults to the Windows display language
+    /// (used when no explicit source is chosen).</summary>
+    public bool TranslationSourceFollowSystem { get; set; } = false;
     public string TranslationTargetLanguage { get; set; } = "en";
+    /// <summary>When true, the translation target defaults to the Windows display language
+    /// (used when no explicit target is chosen); otherwise <see cref="TranslationTargetLanguage"/>.</summary>
+    public bool TranslationTargetFollowSystem { get; set; } = true;
+    /// <summary>Target language used when the source language is the Windows display language
+    /// (so the system language isn't translated back into itself). Independent of
+    /// <see cref="TranslationTargetLanguage"/>.</summary>
+    public string TranslationSystemTargetLanguage { get; set; } = "en";
     public string DictionaryLanguage { get; set; } = "en";
+
+    /// <summary>DPAPI-protected, base64-encoded Baidu AppID + secret (encrypted at rest; never plaintext).</summary>
+    public string BaiduCredentialsBlob { get; set; } = "";
 
     public List<SearchEngine> SearchEngines { get; set; } = GetDefaultEngines();
 
     /// <summary>Target currency for conversion (e.g. "USD", "EUR", "SAR")</summary>
     public string TargetCurrency { get; set; } = "USD";
 
-    /// <summary>User-defined recipe actions (templated URL → open or fetch). See <see cref="UserAction"/>.</summary>
+    /// <summary>User-defined recipe actions (templated URL or JS script). See <see cref="UserAction"/>.</summary>
     public List<UserAction> UserActions { get; set; } = [];
+    /// <summary>自定义操作开关：启用后 UserActions 注册为动作（URL 模板或 JS 脚本）。</summary>
+    public bool EnableCustomActions { get; set; } = true;
     public List<TextRecipeDefinition> TextRecipes { get; set; } = [];
     public string Theme { get; set; } = "system";
 
@@ -252,14 +293,14 @@ public class AppSettings
     /// </summary>
     public Dictionary<string, List<string>> AppHiddenActions { get; set; } = new();
 
-    /// <summary>Action IDs pinned to the main toolbar bar.</summary>
+    /// <summary>动作ID固定在主工具栏上。</summary>
     public List<string> PinnedActionIds { get; set; } = [];
 
     /// <summary>How many context-action buttons to show inline on the toolbar (the rest stay in the dropdown).</summary>
     public int MaxInlineContextActions { get; set; } = 8;
 
     public static List<SearchEngine> GetDefaultEngines() =>
-    [
+    [   
         new() { Id = "google", Name = "Google", IsBuiltIn = true,
             UrlTemplate = "https://www.google.com/search?q={0}&lr=lang_{1}&hl={1}" },
         new() { Id = "bing", Name = "Bing", IsBuiltIn = true,

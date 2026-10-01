@@ -87,6 +87,7 @@ public partial class App : Application
 
         // Global Esc-to-dismiss for our windows. Replaces the previous per-window
         // GetAsyncKeyState polling — see KeyboardHook.cs for the rationale.
+        _trayIcon.ShowReadyNotification();
         KeyboardHook.Install();
     }
 

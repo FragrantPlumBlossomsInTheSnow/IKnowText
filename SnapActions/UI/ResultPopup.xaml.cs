@@ -113,7 +113,7 @@ public partial class ResultPopup : Window
         if (!EnsureOnlineLookupConsent()) return;
 
         // Replace any existing popup so two back-to-back lookups don't stack on screen.
-        TranslationPopup.CloseCurrent();
+        ToolbarWindow.Current?.CloseTranslatePopup();
         _current?.SafeClose();
         var popup = new ResultPopup();
         _current = popup;
@@ -186,7 +186,7 @@ public partial class ResultPopup : Window
         if (_fetch == null) return;
         var request = _cts;
         _resultText = "";
-        LoadingText.Text = "Loading...";
+        LoadingText.Text = "正在加载...";
         LoadingText.Visibility = Visibility.Visible;
         ResultText.Visibility = CopyButton.Visibility = RetryButton.Visibility = Visibility.Collapsed;
         var outcome = await LookupExecution.RunAsync(_fetch, request.Token);
@@ -218,11 +218,9 @@ public partial class ResultPopup : Window
     internal static bool EnsureOnlineLookupConsent()
     {
         if (Config.SettingsManager.Current.AllowOnlineLookups) return true;
-        var msg = "Some actions send your selected text to a third-party online service over HTTPS " +
-                  "to fetch a result: Translate opens Google Translate inside the app; Dictionary and Currency use " +
-                  "dictionaryapi.dev and open.er-api.com. This also covers any custom \"fetch\" actions " +
-                  "you add (which send to the host in their own URL).\n\nAllow these online lookups? " +
-                  "You can turn this back off in Settings.";
+        var msg = "一些操作通过HTTPS将您选择的文本发送到第三方在线服务以获取结果：翻译将文本发送到百度开放平台API；" +
+                  "这也涵盖了您添加的任何自定义“获取”操作（以自己的URL发送到主机）。" +
+                  "\\n\\n允许这些在线查找吗？您可以在“设置”中关闭此功能。";
         var answer = System.Windows.MessageBox.Show(msg, "Allow online lookups?",
             System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
             System.Windows.MessageBoxResult.No, System.Windows.MessageBoxOptions.DefaultDesktopOnly);
@@ -234,21 +232,21 @@ public partial class ResultPopup : Window
 
     internal static void ShowActionResult(string title, string result, SelectionSnapshot selection)
     {
-        TranslationPopup.CloseCurrent();
+        ToolbarWindow.Current?.CloseTranslatePopup();
         _current?.SafeClose();
         var popup = new ResultPopup { _selection = selection };
         _current = popup;
         popup.SourceText.Text = selection.Text.Length > 240 ? selection.Text[..240] + "…" : selection.Text;
         popup.SourceText.FlowDirection = ToolbarWindow.GetPreviewFlowDirection(selection.Text);
         popup.SourceText.Visibility = Visibility.Visible;
-        popup.ReplaceButton.Visibility = selection.CanReplace ? Visibility.Visible : Visibility.Collapsed;
+        popup.ReplaceButton.Visibility =  Visibility.Visible;
         NativeMethods.GetCursorPos(out var pt);
         popup.ShowAt(pt.X, pt.Y, title, _ => Task.FromResult(new LookupResult(LookupStatus.Success, result)));
     }
 
     internal static void ShowLocalResult(string title, string text)
     {
-        TranslationPopup.CloseCurrent();
+        ToolbarWindow.Current?.CloseTranslatePopup();
         _current?.SafeClose();
         var popup = new ResultPopup();
         _current = popup;
@@ -265,15 +263,17 @@ public partial class ResultPopup : Window
         var result = await ActionRunner.ApplyTextAsync(_resultText, _selection, destination);
         if (_closed) return;
         if (result.Success) { SafeClose(); return; }
+        // 替换（paste）路径的 CanRetry 恒为 false，失败后必须无条件释放互斥门，
+        // 否则下一次点击会被 _applyGate.TryStart() 静默拦截。
         if (result.CanRetry && await _selection.Operation.CanUseSelectionAsync())
         {
-            if (_closed) return;
-            _applyGate.AllowRetry();
             CopyButton.IsEnabled = true;
             ReplaceButton.IsEnabled = _selection.CanReplace;
         }
+        Log.Warn($"Result replace/copy failed: {result.Message}");
         LoadingText.Text = result.Message;
         LoadingText.Visibility = Visibility.Visible;
+        _applyGate.AllowRetry();
     }
 
     private async void Copy_Click(object sender, RoutedEventArgs e)
@@ -284,7 +284,7 @@ public partial class ResultPopup : Window
             try { Clipboard.SetText(_resultText); }
             catch
             {
-                LoadingText.Text = "The clipboard is busy. Try Copy again.";
+                LoadingText.Text = "剪贴板正忙，请重试复制。";
                 LoadingText.Visibility = Visibility.Visible;
                 return;
             }

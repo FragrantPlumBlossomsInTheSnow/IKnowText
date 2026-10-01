@@ -26,7 +26,7 @@ public partial class ActionPalette : Window
         SourceBox.Text = selection?.Text ?? "";
         SourceBox.IsReadOnly = selection != null;
         SourceBox.FlowDirection = ToolbarWindow.GetPreviewFlowDirection(SourceBox.Text);
-        SourceLabel.Text = selection == null ? "No selection available — enter text here" : "Selected text";
+        SourceLabel.Text = selection == null ? "没有选中内容 —— 在这里输入文本" : "选中内容";
         ((ComboBoxItem)DestinationBox.Items[1]).IsEnabled = selection?.CanReplace == true;
         DestinationBox.SelectedIndex = selection?.CanReplace == true && Config.SettingsManager.Current.ReplaceSelectionOnTransform ? 1 : 0;
         _ready = true;
@@ -41,7 +41,10 @@ public partial class ActionPalette : Window
         string text = _selection?.Text ?? SourceBox.Text;
         var analysis = _selection?.Analysis ?? new TextClassifier().Classify(text);
         _actions = _registry.GetActions(text, analysis, _appName).SelectMany(g => g.Actions)
-            .Where(a => a is not IOperationAction || _selection?.CanReplace == true).ToList();
+            .Where(a => a is not IOperationAction || _selection?.CanReplace == true)
+            // 同一动作可能同时出现在 Context 与 Transform 两组（JS 脚本动作的「上下文触发」正则命中时），
+            // 调色板是一维列表，按 id 去重避免同一个动作列两遍。
+            .DistinctBy(a => a.Id, StringComparer.Ordinal).ToList();
         FilterActions();
     }
 
@@ -61,23 +64,23 @@ public partial class ActionPalette : Window
 
     private void UpdatePreview()
     {
-        if (ActionsList.SelectedItem is not IAction action) { RunButton.IsEnabled = false; PreviewText.Text = "No matching actions"; return; }
+        if (ActionsList.SelectedItem is not IAction action) { RunButton.IsEnabled = false; PreviewText.Text = "没有匹配的操作"; return; }
         RunButton.IsEnabled = true;
         if (action.IsPreviewSafe)
         {
             string text = _selection?.Text ?? SourceBox.Text;
             ActionResult result;
             try { result = action.Execute(text, _selection?.Analysis ?? new TextClassifier().Classify(text)); }
-            catch { result = new(false, Message: "This selection could not be previewed."); }
+            catch { result = new(false, Message: "此选中内容无法预览。"); }
             PreviewText.Text = result.Success ? result.ResultText : result.Message;
             PreviewText.FlowDirection = ToolbarWindow.GetPreviewFlowDirection(PreviewText.Text ?? "");
             RunButton.IsEnabled = result.Success;
-            RunButton.Content = DestinationBox.SelectedIndex == 1 ? "Replace selection" : "Copy result";
+            RunButton.Content = DestinationBox.SelectedIndex == 1 ? "替换选中内容" : "复制结果";
             DestinationBox.Visibility = Visibility.Visible;
         }
         else
         {
-            PreviewText.Text = action is IOperationAction ? "This action changes text in the original app." : $"Run {action.Name}";
+            PreviewText.Text = action is IOperationAction ? "此操作会更改原始应用程序中的文本。" : $"Run {action.Name}";
             RunButton.Content = action.Name;
             DestinationBox.Visibility = Visibility.Collapsed;
         }
@@ -106,19 +109,19 @@ public partial class ActionPalette : Window
         {
             if (_selection != null && !await GlobalHotkey.ReturnToTargetAsync(selection.Operation))
             {
-                ResultPopup.ShowLocalResult("Action unavailable", "The original window could not be focused. Select the text again.");
+                ResultPopup.ShowLocalResult("操作不可用", "原始窗口无法聚焦。再次选择文本。");
                 Close(); return;
             }
             var result = await ActionRunner.ExecuteAsync(action, selection);
             if (result.Success && result.ResultText != null)
                 result = await ActionRunner.ApplyTextAsync(result.ResultText, selection,
                     DestinationBox.SelectedIndex == 1 ? ResultDestination.Replace : ResultDestination.Copy);
-            if (!result.Success) ResultPopup.ShowLocalResult("Action unavailable", result.Message ?? "The action could not be completed");
+            if (!result.Success) ResultPopup.ShowLocalResult("操作不可用", result.Message ?? "操作无法完成");
             Close();
         }
         catch (Exception ex)
         {
-            Helpers.Log.Warn($"Palette action failed ({ex.GetType().Name})");
+            Helpers.Log.Warn($"调色板操作失败 ({ex.GetType().Name})");
             Close();
         }
     }

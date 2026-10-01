@@ -11,6 +11,7 @@ public class MouseHook : IDisposable
     private const int WM_LBUTTONDOWN = 0x0201;
     private const int WM_LBUTTONUP = 0x0202;
     private const int WM_MOUSEMOVE = 0x0200;
+    private const int WM_MOUSEWHEEL = 0x020A;
     private const uint WM_NCHITTEST = 0x0084;
     private const int HTCLIENT = 1;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -250,6 +251,28 @@ public class MouseHook : IDisposable
     // fires per mouse event — so we'd rather miss subsequent occurrences than write 60 lines/sec.
     private static int _hookCallbackErrorLogged;
 
+    /// <summary>
+    /// Last observed scroll moment (wheel or scrollbar drag). Used to suppress automatic capture /
+    /// synthetic-copy injection right after the user scrolled — injecting Ctrl+Insert into an editor
+    /// then makes the IDE "reveal caret" and rolls the page back to the cursor. Scrolling is a
+    /// browse gesture, not a selection, so a short cooldown skips the synthetic fallback.
+    /// </summary>
+    /// <remarks>
+    /// 初始值必须是 0 而非 long.MinValue：TickCount64 自开机起为正，减去 long.MinValue 会
+    /// 无符号回绕成负数，导致 IsRecentScroll 在"从未滚动"时恒返回 true——启动后第一次滚动
+    /// 之前，合成键兜底会被误判处于滚动冷却而全部跳过。
+    /// </remarks>
+    private static long _lastScrollMs = 0;
+
+    /// <summary>
+    /// True when the user wheel-scrolled or dragged a scrollbar within <paramref name="windowMs"/>.
+    /// </summary>
+    internal static bool IsRecentScroll(long windowMs) =>
+        Environment.TickCount64 - Volatile.Read(ref _lastScrollMs) < windowMs;
+
+    private static void MarkScrollMoment() =>
+        Volatile.Write(ref _lastScrollMs, Environment.TickCount64);
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         try
@@ -267,6 +290,13 @@ public class MouseHook : IDisposable
 
     private void ProcessMouseEvent(int msg, IntPtr lParam)
     {
+        if (msg == WM_MOUSEWHEEL)
+        {
+            // Wheel scrolling = browsing, not selecting. Record it so the synthetic-copy fallback
+            // (which reveals the caret and rolls the page) is suppressed right after a scroll.
+            MarkScrollMoment();
+            return;
+        }
         if (msg == WM_LBUTTONDOWN)
         {
             var pt = ReadPoint(lParam);

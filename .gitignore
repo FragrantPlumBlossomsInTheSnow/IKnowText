@@ -1,9 +1,16 @@
-bin/
-obj/
+# .NET
+[Bb]in/
+[Oo]bj/
+.vs/
 *.user
 *.suo
-.vs/
-*.DotSettings.user
-publish/
-publish-*/
+*.userosscache
+*.sln.docstates
+# 测试/构建产物
+_selftest/
+TestResults/
 artifacts/
+*.trx
+.trae/
+.idea/
+*.DotSettings.user

@@ -220,50 +220,30 @@ public static class SettingsManager
     // toggles can't produce a settings.json that disagrees with the registry value.
     private static readonly object _autoStartLock = new();
 
-    public static void SetAutoStart(bool enable)
+    public static bool SetAutoStart(bool enable)
     {
-        if (RuntimePaths.IsIsolated) return; // Test instances never change the user's login entry.
+        if (RuntimePaths.IsIsolated) return false;
+
         lock (_autoStartLock)
         {
-        // Apply the registry change first, then commit Current/Save only on success — otherwise
-        // a failed registry write would leave the in-memory flag and disk file out of sync with
-        // reality.
-        bool applied = false;
+            bool applied = enable ? AutoStartTask.Register() : AutoStartTask.Delete();
+            if (!applied) return false;
+
+            TryRemoveLegacyRunEntry();
+
+            Current.AutoStart = enable;
+            Save();
+            return true;
+        }
+    }
+    private static void TryRemoveLegacyRunEntry()
+    {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-            if (key == null) return;
-
-            if (enable)
-            {
-                // Environment.ProcessPath is null when running under a non-PE host (e.g.
-                // dotnet some.dll). Without this guard the registry would get an empty quoted
-                // string and Windows would silently fail to autostart anything.
-                var exePath = Environment.ProcessPath;
-                if (string.IsNullOrEmpty(exePath))
-                {
-                    SnapActions.Helpers.Log.Warn("SetAutoStart: ProcessPath is null/empty; skipping registry write");
-                    return;
-                }
-                key.SetValue("SnapActions", $"\"{exePath}\"");
-            }
-            else
-            {
-                key.DeleteValue("SnapActions", false);
-            }
-            applied = true;
+            key?.DeleteValue("SnapActions", false);
         }
-        catch (Exception ex)
-        {
-            SnapActions.Helpers.Log.Warn($"SetAutoStart: registry write failed: {ex.Message}");
-        }
-
-        if (applied)
-        {
-            Current.AutoStart = enable;
-            Save();
-        }
-        }
+        catch { /* 尽力而为 */ }
     }
 }

@@ -238,8 +238,16 @@ internal static class ClipboardTransaction
 
     internal static bool CanRestoreClipboard(
         ClipboardObservation acceptedWrite, ClipboardObservation current) =>
-        acceptedWrite.Sequence != 0
+        IsValidRestoreBaseline(acceptedWrite)
         && acceptedWrite == current;
+
+    /// <summary>
+    /// 可作为恢复基线的剪贴板观察：序列号非 0（剪贴板曾写入、观察可信），
+    /// 或确认为空剪贴板（序列号 0 且所有者为空，快照为空）。空基线合法：恢复即清空。
+    /// </summary>
+    private static bool IsValidRestoreBaseline(ClipboardObservation observation) =>
+        observation.Sequence != 0
+        || (observation.OwnerWindow == IntPtr.Zero && observation.OwnerProcessId == 0);
 
     /// <summary>
     /// Holds the native clipboard exclusion lock continuously from the final ownership
@@ -677,9 +685,22 @@ internal static class ClipboardTransaction
         try
         {
             var observationBefore = ObserveClipboard();
+            // 剪贴板为空（序列号 0 且无任何格式）：快照平凡地“完整” —— 快照即空，恢复即清空。
+            // 不能在下面走 IsCompleteSnapshot（它硬性要求 before.Sequence != 0，空剪贴板恒为 0，
+            // 会把空剪贴板误判为“快照失败”，从而让合成键兜底被放弃）。
+            if (observationBefore.Sequence == 0 && CountClipboardFormats() == 0)
+            {
+                var obsEmpty = ObserveClipboard();
+                return obsEmpty == observationBefore
+                    ? new ClipboardSnapshot(new Dictionary<string, object>(), obsEmpty, new List<NativeClipboardFormatBackup>())
+                    : null;
+            }
             var data = Clipboard.GetDataObject();
             if (data == null && CountClipboardFormats() != 0)
+            {
+                SnapActions.Helpers.Log.Info("Clipboard snapshot failed: GetDataObject returned null but formats exist");
                 return null;
+            }
             var snap = new Dictionary<string, object>();
             var reads = new List<ClipboardFormatRead>();
 
@@ -710,15 +731,26 @@ internal static class ClipboardTransaction
 
             var observation = ObserveClipboard();
             if (!IsCompleteSnapshot(observationBefore, observation, reads))
+            {
+                var failed = reads.Where(r => RoundTrippableFormats.Contains(r.Format) && (!r.ReadSucceeded || !r.HasValue))
+                    .Select(r => r.Format).ToArray();
+                SnapActions.Helpers.Log.Info(
+                    $"Clipboard snapshot failed: incomplete read (seq {observationBefore.Sequence}->{observation.Sequence}, " +
+                    $"failedFormats=[{string.Join(",", failed)}])");
                 return null;
+            }
 
             var nativeBackups = TryCaptureNativeClipboardBackups(observation);
-            return nativeBackups == null
-                ? null
-                : new ClipboardSnapshot(snap, observation, nativeBackups);
+            if (nativeBackups == null)
+            {
+                SnapActions.Helpers.Log.Info("Clipboard snapshot failed: native format backup unavailable (clipboard locked by another process?)");
+                return null;
+            }
+            return new ClipboardSnapshot(snap, observation, nativeBackups);
         }
-        catch
+        catch (Exception ex)
         {
+            SnapActions.Helpers.Log.Info($"Clipboard snapshot failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }

@@ -19,8 +19,10 @@ public class CalculateAction : IAction
         {
             var result = MathEvaluator.Evaluate(text.Trim());
             string formatted;
-            if (double.IsNaN(result) || double.IsInfinity(result))
-                return new ActionResult(false, Message: "Result is not a finite number");
+            if (double.IsInfinity(result))
+                return new ActionResult(false, Message: "∞");
+            if(double.IsNaN(result))
+                return new ActionResult(false, Message: "NaN");
 
             // Strict '<' on the upper bound: (double)long.MaxValue rounds UP to 2^63, so "<="
             // admits 2^63 itself and the saturating cast then truncates it to long.MaxValue —

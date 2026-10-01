@@ -169,10 +169,10 @@ public partial class ToolbarWindow
             SubMenuPopup.IsOpen = true;
         }
         SetSwatch(null);
-        SetPreviewContent(PreviewText, "Copied to clipboard");
+        SetPreviewContent(PreviewText, "已复制到剪贴板！");
         PreviewBorder.Visibility = Visibility.Visible;
         PreviewText.Opacity = 1;
-        await Task.Delay(450);
+        await Task.Delay(500);
     }
 
     private async Task ShowFailureAndHide(string message)
@@ -183,7 +183,7 @@ public partial class ToolbarWindow
         if (!SubMenuPopup.IsOpen)
         {
             SubMenuPanel.Children.Clear();
-            SubMenuTitle.Text = "Error";
+            SubMenuTitle.Text = "错误";
             SubMenuHeader.Visibility = Visibility.Visible;
             GearButton.Visibility = Visibility.Collapsed;
             CustomizationHint.Visibility = Visibility.Collapsed;
@@ -221,8 +221,14 @@ public partial class ToolbarWindow
         foreach (var rune in text.EnumerateRunes())
         {
             int value = rune.Value;
-            if (value is 0x200F or 0x061C) return FlowDirection.RightToLeft;
-            if (value == 0x200E) return FlowDirection.LeftToRight;
+            switch (value)
+            {
+                case 0x200F or 0x061C:
+                    return FlowDirection.RightToLeft;
+                case 0x200E:
+                    return FlowDirection.LeftToRight;
+            }
+
             if (!Rune.IsLetter(rune)) continue;
             return value is >= 0x0590 and <= 0x08FF
                 or >= 0xFB1D and <= 0xFDFF or >= 0xFE70 and <= 0xFEFF

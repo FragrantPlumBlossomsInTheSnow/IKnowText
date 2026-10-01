@@ -6,6 +6,10 @@ public record ActionResult(bool Success, string? ResultText = null, string? Mess
 {
     // Only failures known not to have attempted target input may offer an in-place retry.
     internal bool CanRetry { get; init; }
+
+    // Actions that open their own UI (e.g. translate popup) must not let the toolbar hide
+    // right after Execute — the popup lives on the toolbar window.
+    internal bool KeepToolbarOpen { get; init; }
 }
 
 public interface IAction

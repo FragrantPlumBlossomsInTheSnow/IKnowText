@@ -1,11 +1,21 @@
 <Application x:Class="SnapActions.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:modern="http://schemas.inkore.net/lib/ui/wpf/modern"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- iNKORE UI.WPF.Modern（工具栏照抄备份）：浅色 Fluent 主题资源 + 控件样式 -->
+                <modern:ThemeResources/>
+                <modern:XamlControlsResources/>
+                <!-- 工具栏自定义样式/颜色/几何图标（置于 iNKORE 之后，覆盖其默认同名列） -->
                 <ResourceDictionary Source="UI/Themes/DarkTheme.xaml"/>
+                <!-- WPF-UI 4.x：主题字典 + 控件字典（设置窗口等继续使用）。两套资源键不冲突，
+                     WPF-UI 合并字典在后，其 Fluent token 与隐式控件样式对设置窗口保持优先。 -->
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

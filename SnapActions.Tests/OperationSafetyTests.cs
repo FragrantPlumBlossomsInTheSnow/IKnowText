@@ -1,5 +1,4 @@
 using SnapActions.Core;
-using SnapActions.Actions.TransformActions;
 using SnapActions.Detection;
 using Xunit;
 
@@ -182,13 +181,6 @@ public class OperationSafetyTests
     {
         var current = Target with { ProcessId = processId, ThreadId = threadId };
         Assert.False(ForegroundGuard.Matches(Target, current));
-    }
-
-    [Fact]
-    public void DestructiveActions_FailClosedWithoutOperationToken()
-    {
-        Assert.False(new DeleteTextAction().Execute("selected", TextAnalysis.PlainText).Success);
-        Assert.False(new PastePlainTextAction().Execute("selected", TextAnalysis.PlainText).Success);
     }
 
     [Fact]

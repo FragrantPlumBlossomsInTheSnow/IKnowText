@@ -16,6 +16,6 @@ public class EncodingAction(string id, string name, string iconKey, Func<string,
     {
         try { return new ActionResult(true, transform(text), name); }
         catch (Exception ex) when (ex is FormatException or System.Text.DecoderFallbackException)
-        { return new ActionResult(false, Message: $"{name}: input is not valid encoded UTF-8 text"); }
+        { return new ActionResult(false, Message: $"{name}: 输入不是有效的编码UTF 8文本"); }
     }
 }
