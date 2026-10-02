@@ -12,7 +12,7 @@ public partial class App : Application
 {
     private static Mutex? _mutex;
     private static bool _ownsMutex;
-    private TrayIconManager? _trayIcon;
+    private TrayMenu? _trayIcon;
     private SelectionTracker? _tracker;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -77,7 +77,7 @@ public partial class App : Application
         SettingsManager.Load();
         ThemeManager.Start();
 
-        _trayIcon = new TrayIconManager();
+        _trayIcon = new TrayMenu();
         _trayIcon.Initialize();
 
         ForegroundGuard.WarmUpAutomation();
@@ -87,7 +87,6 @@ public partial class App : Application
 
         // Global Esc-to-dismiss for our windows. Replaces the previous per-window
         // GetAsyncKeyState polling — see KeyboardHook.cs for the rationale.
-        _trayIcon.ShowReadyNotification();
         KeyboardHook.Install();
     }
 

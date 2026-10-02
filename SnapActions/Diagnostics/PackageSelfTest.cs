@@ -65,6 +65,64 @@ internal static class PackageSelfTest
                 checks.Add(theme + " Settings sections, search, and small-window render");
             }
 
+            // 托盘菜单：资源结构 + 「启用」勾选回写 + 状态行 + 深浅两套外观留档。
+            // 菜单是 H.NotifyIcon 的 WPF ContextMenu（外壳圆角/阴影自绘在 UI/TrayMenu.xaml，条目用 WPF-UI 的
+            // ui:MenuItem），所以它跟随应用主题 —— 旧的 WinForms ContextMenuStrip 做不到这点。
+            var trayMenu = (System.Windows.Controls.ContextMenu)Application.Current.FindResource("TrayContextMenu");
+            var trayResource = (H.NotifyIcon.TaskbarIcon)Application.Current.FindResource("TrayIcon");
+            Require(ReferenceEquals(trayResource.ContextMenu, trayMenu), "Tray icon is not bound to the tray context menu");
+            foreach (string tag in new[] { "enable", "autostart", "settings", "exit" })
+                Require(trayMenu.Items.OfType<System.Windows.Controls.MenuItem>().Any(i => (string?)i.Tag == tag),
+                    "Tray menu is missing item: " + tag);
+            var trayStatus = trayMenu.Items.OfType<TextBlock>().FirstOrDefault(t => (string?)t.Tag == "status");
+            Require(trayStatus != null, "Tray menu has no status header");
+
+            var savedTrayEnabled = SettingsManager.Current.Enabled;
+            var savedTrayTheme = SettingsManager.Current.Theme;
+            var trayManager = new TrayMenu();
+            var trayHost = new Window
+            {
+                Width = 8, Height = 8, WindowStyle = WindowStyle.None, ShowInTaskbar = false,
+                AllowsTransparency = true, Opacity = 0.01, ShowActivated = false,
+                Content = new System.Windows.Controls.Grid()
+            };
+            try
+            {
+                trayManager.Initialize(); // 真建一次托盘图标：覆盖 H.NotifyIcon 的创建路径
+                var enableItem = trayMenu.Items.OfType<System.Windows.Controls.MenuItem>()
+                    .First(i => (string?)i.Tag == "enable");
+                // 打开菜单会先按设置同步勾选状态，用户点击才回写 —— 两步都要验证。
+                trayMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+                Require(enableItem.IsChecked == savedTrayEnabled, "Tray '启用' checkbox did not sync from settings");
+                enableItem.IsChecked = !savedTrayEnabled; // 模拟点击 → Checked/Unchecked → 应写回设置
+                Require(SettingsManager.Current.Enabled == !savedTrayEnabled, "Tray '启用' toggle did not write settings");
+                trayMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+                Require(trayStatus!.Text.Contains(SettingsManager.Current.Enabled ? "已启用" : "已暂停"),
+                    "Tray status header did not follow the enabled state");
+
+                trayHost.Show();
+                foreach (string theme in new[] { "dark", "light" })
+                {
+                    SettingsManager.Current.Theme = theme; ThemeManager.Apply();
+                    trayMenu.PlacementTarget = trayHost;
+                    trayMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+                    trayMenu.IsOpen = true;
+                    trayHost.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+                    trayMenu.UpdateLayout();
+                    RenderElement(trayMenu, "tray-menu-" + theme, 260, 260);
+                    trayMenu.IsOpen = false;
+                }
+            }
+            finally
+            {
+                trayMenu.IsOpen = false;
+                trayHost.Close();
+                trayManager.Dispose();
+                SettingsManager.Current.Enabled = savedTrayEnabled;
+                SettingsManager.Current.Theme = savedTrayTheme; ThemeManager.Apply();
+            }
+            checks.Add("Tray menu (H.NotifyIcon + WPF-UI MenuItems): structure, toggle wiring, theme-following render");
+
             // 设置-翻译-百度翻译：已无「保存百度凭据」按钮，输入框变化后必须由防抖自动落盘。
             var baiduSettings = new SettingsWindow();
             baiduSettings.LoadSettings();

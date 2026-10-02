@@ -1,81 +1,90 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows.Controls;
+using H.NotifyIcon;
 using SnapActions.Config;
 using SnapActions.Helpers;
+using ContextMenu = System.Windows.Controls.ContextMenu;
+using MenuItem = System.Windows.Controls.MenuItem;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace SnapActions.UI;
 
-public class TrayIconManager : IDisposable
+/// <summary>
+///     托盘图标与它的上下文菜单。菜单外观在 <c>UI/TrayMenu.xaml</c>（由 App.xaml 合并），行为都在这里：
+///     条目按 Tag 关联（enable / autostart / settings / exit），每次打开菜单都从设置同步勾选状态与状态行。
+///     托盘用的是 H.NotifyIcon 的 WPF <see cref="TaskbarIcon"/>，菜单是真正的 WPF <see cref="ContextMenu"/>，
+///     因此跟随应用主题与 WPF-UI 的 Fluent 菜单样式（旧的 WinForms ContextMenuStrip 只能吃系统样式）。
+/// </summary>
+public class TrayMenu : IDisposable
 {
-    private ContextMenuStrip? _contextMenu;
+    private TaskbarIcon? _trayIcon;
     private SettingsWindow? _settingsWindow;
-    private NotifyIcon? _trayIcon;
+    private MenuItem? _enableItem;
+    private MenuItem? _autoStartItem;
+    private TextBlock? _statusHeader;
 
     public void Dispose()
     {
         _trayIcon?.Dispose();
-        _contextMenu?.Dispose();
         GC.SuppressFinalize(this);
     }
 
     public void Initialize()
     {
-        _contextMenu = new ContextMenuStrip();
+        _trayIcon = (TaskbarIcon)Application.Current.FindResource("TrayIcon");
+        var menu = (ContextMenu)Application.Current.FindResource("TrayContextMenu");
 
-        var enableItem = new ToolStripMenuItem("启用")
+        _enableItem = Item(menu, "enable");
+        _autoStartItem = Item(menu, "autostart");
+        _statusHeader = menu.Items.OfType<TextBlock>().FirstOrDefault(t => (string?)t.Tag == "status");
+
+        if (_enableItem != null)
         {
-            Checked = SettingsManager.Current.Enabled,
-            CheckOnClick = true
-        };
-        enableItem.CheckedChanged += (_, _) =>
+            _enableItem.Checked += (_, _) => SetEnabled(true);
+            _enableItem.Unchecked += (_, _) => SetEnabled(false);
+        }
+        if (_autoStartItem != null)
         {
-            // Avoid recursion: only act when the user changed it (not the Opening sync below).
-            if (SettingsManager.Current.Enabled == enableItem.Checked) return;
-            SettingsManager.Current.Enabled = enableItem.Checked;
-            SettingsManager.Save();
-        };
+            _autoStartItem.Checked += (_, _) => SetAutoStart(true);
+            _autoStartItem.Unchecked += (_, _) => SetAutoStart(false);
+        }
+        if (Item(menu, "settings") is { } settingsItem) settingsItem.Click += (_, _) => ShowSettings();
+        if (Item(menu, "exit") is { } exitItem) exitItem.Click += (_, _) => Application.Current.Shutdown();
 
-        var settingsItem = new ToolStripMenuItem("设置...");
-        settingsItem.Click += (_, _) => ShowSettings();
+        // Refresh check states from settings every time the tray menu opens so changes made via the
+        // Settings window don't leave the tray showing stale state.
+        menu.Opened += (_, _) => SyncStates();
 
-        var autoStartItem = new ToolStripMenuItem("开机自启")
-        {
-            Checked = SettingsManager.Current.AutoStart,
-            CheckOnClick = true
-        };
-        autoStartItem.CheckedChanged += (_, _) =>
-        {
-            if (SettingsManager.Current.AutoStart == autoStartItem.Checked) return;
-            SettingsManager.SetAutoStart(autoStartItem.Checked);
-        };
+        _trayIcon.Icon = CreateDefaultIcon();
+        _trayIcon.TrayMouseDoubleClick += (_, _) => ShowSettings();
+        _trayIcon.ForceCreate();
+    }
 
-        // Refresh check states from settings every time the tray menu opens so changes
-        // made via the Settings window don't leave the tray showing stale state.
-        _contextMenu.Opening += (_, _) =>
-        {
-            enableItem.Checked = SettingsManager.Current.Enabled;
-            autoStartItem.Checked = SettingsManager.Current.AutoStart;
-        };
+    /// <summary>按 Tag 找菜单项：外观（XAML）与行为（本文件）通过 Tag 约定连接，互不依赖控件顺序。</summary>
+    private static MenuItem? Item(ContextMenu menu, string tag) =>
+        menu.Items.OfType<MenuItem>().FirstOrDefault(i => (string?)i.Tag == tag);
 
-        var exitItem = new ToolStripMenuItem("退出");
-        exitItem.Click += (_, _) => Application.Current.Shutdown();
+    private void SyncStates()
+    {
+        if (_enableItem != null) _enableItem.IsChecked = SettingsManager.Current.Enabled;
+        if (_autoStartItem != null) _autoStartItem.IsChecked = SettingsManager.Current.AutoStart;
+        if (_statusHeader != null)
+            _statusHeader.Text = SettingsManager.Current.Enabled ? "SnapActions · 已启用" : "SnapActions · 已暂停";
+    }
 
-        _contextMenu.Items.Add(enableItem);
-        _contextMenu.Items.Add(autoStartItem);
-        _contextMenu.Items.Add(new ToolStripSeparator());
-        _contextMenu.Items.Add(settingsItem);
-        _contextMenu.Items.Add(new ToolStripSeparator());
-        _contextMenu.Items.Add(exitItem);
+    private static void SetEnabled(bool enabled)
+    {
+        // Avoid recursion: only act when the user changed it (not the Opening sync above).
+        if (SettingsManager.Current.Enabled == enabled) return;
+        SettingsManager.Current.Enabled = enabled;
+        SettingsManager.Save();
+    }
 
-        _trayIcon = new NotifyIcon
-        {
-            Text = "SnapActions",
-            Icon = CreateDefaultIcon(),
-            Visible = true,
-            ContextMenuStrip = _contextMenu
-        };
-
-        _trayIcon.DoubleClick += (_, _) => ShowSettings();
+    private static void SetAutoStart(bool enabled)
+    {
+        if (SettingsManager.Current.AutoStart == enabled) return;
+        SettingsManager.SetAutoStart(enabled);
     }
 
     private void ShowSettings()
@@ -90,19 +99,6 @@ public class TrayIconManager : IDisposable
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
-    }
-
-    public void ShowReadyNotification()
-    {
-        if (_trayIcon == null) return;
-        try
-        {
-            _trayIcon.ShowBalloonTip(2000, "SnapActions", "准备就绪", ToolTipIcon.Info);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Tray ready notification failed: {ex.Message}");
-        }
     }
 
     private static Icon CreateDefaultIcon()

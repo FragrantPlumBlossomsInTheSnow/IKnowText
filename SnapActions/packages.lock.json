@@ -2,6 +2,15 @@
   "version": 1,
   "dependencies": {
     "net10.0-windows7.0": {
+      "H.NotifyIcon.Wpf": {
+        "type": "Direct",
+        "requested": "[2.4.1, )",
+        "resolved": "2.4.1",
+        "contentHash": "aDfDSHCCOWgQoIvAApiog/MhriXibacqANQm+b5GaRCgRg92u5J2QcoW2C+wIblgxhtGx3o32/DCKWRR5C/KLw==",
+        "dependencies": {
+          "H.NotifyIcon": "2.4.1"
+        }
+      },
       "iNKORE.UI.WPF.Modern": {
         "type": "Direct",
         "requested": "[0.10.2.1, )",
@@ -45,19 +54,23 @@
           "WPF-UI.Abstractions": "4.3.0"
         }
       },
-      "WPF-UI.Tray": {
-        "type": "Direct",
-        "requested": "[4.3.0, )",
-        "resolved": "4.3.0",
-        "contentHash": "xpBXOrH8FuM+9xAbc2Bv7huqZrfq06wKszYHcsDuI/t/1OabtXp7DWCJmHd3tLLuSUcefWfNcPX591csuw4Rng==",
-        "dependencies": {
-          "WPF-UI": "4.3.0"
-        }
-      },
       "Acornima": {
         "type": "Transitive",
         "resolved": "1.7.0",
         "contentHash": "a2I4O4qkuAdB0oSaGz6/k0n/bXxMbGcLBra5dNTTVSLmTwM7uORA8ebpOrNMmDfFWOMwvuaRL6gPprRV4HTV0w=="
+      },
+      "H.GeneratedIcons.System.Drawing": {
+        "type": "Transitive",
+        "resolved": "2.4.1",
+        "contentHash": "gjYhuwHQzISqKhcNYaRdDhzKCoqLZii+6TTHP0MQf4Q9+H6z4f4A5Xu/j8B8XpFPQ1grCMlQYREvNyNJT9Q/Bg=="
+      },
+      "H.NotifyIcon": {
+        "type": "Transitive",
+        "resolved": "2.4.1",
+        "contentHash": "nNPgNzo5UHcWYpVLO3AsRlH8fKE9shBA7/WLpZrFZUFbzpKGcLnz15Kmg0pQ851aboAfm3YuHjYFsYQges/pyw==",
+        "dependencies": {
+          "H.GeneratedIcons.System.Drawing": "2.4.1"
+        }
       },
       "iNKORE.UI.WPF": {
         "type": "Transitive",
