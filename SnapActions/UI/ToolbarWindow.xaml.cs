@@ -504,6 +504,8 @@ public partial class ToolbarWindow : Window
 
     private void HideToolbar(ToolbarOperationContext? expectedContext)
     {
+        // 拖动进行中不隐藏窗口：关闭弹出层/窗口会让 OLE 拖动的 dragSource 退出可视树，拖动循环挂死。
+        if (_draggingAction != null) return;
         var currentContext = Volatile.Read(ref _operationContext);
         if (expectedContext != null
             && !ReferenceEquals(expectedContext, currentContext))
@@ -818,6 +820,11 @@ public partial class ToolbarWindow : Window
         {
             CancelHoverClose();
 
+            // 拖动进行中绝不关闭弹出层：dragSource 在其中，关闭会让 OLE 拖动循环挂死。
+            if (_draggingAction != null) return;
+            // 右键菜单打开期间绝不关闭弹出层：菜单的 PlacementTarget 是弹出层里的按钮，
+            // 关闭弹出层会把按钮摘出可视树，菜单失去宿主后留在屏幕上没人收。
+            if (_activeActionMenu != null) return;
             // 到点时如果鼠标还在按钮或 Popup 上，就放弃关闭
             if (SubMenuPopup.IsMouseOver) return;
             if (TransformButton.IsMouseOver || EncodeButton.IsMouseOver) return;
@@ -839,7 +846,9 @@ public partial class ToolbarWindow : Window
     {
         if (!SettingsManager.Current.HoverOpen) return;
         if (sender is not Button { Tag: ActionCategory category }) return;
-
+        // 拖动进行中不切换/重建子菜单：拖动路径会经过分类按钮，重建会清空 SubMenuPanel.Children，
+        // 把 OLE 的 dragSource 从可视树里摘掉，拖动被立即取消（“拖不动”的来源之一）。
+        if (_draggingAction != null) return;
         // 鼠标重新进入按钮 → 取消待关闭
         CancelHoverClose();
 
@@ -856,6 +865,7 @@ public partial class ToolbarWindow : Window
     {
         if (!SettingsManager.Current.HoverOpen) return;
         if (!SubMenuPopup.IsOpen) return;
+        if (_draggingAction != null) return; // 拖动中保持弹出层存活（dragSource 在其中）
         ScheduleHoverClose();
     }
 
@@ -868,6 +878,7 @@ public partial class ToolbarWindow : Window
     {
         if (!SettingsManager.Current.HoverOpen) return;
         if (!SubMenuPopup.IsOpen) return;
+        if (_draggingAction != null) return; // 拖动中保持弹出层存活（dragSource 在其中）
         ScheduleHoverClose();
     }
     

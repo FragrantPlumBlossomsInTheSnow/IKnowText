@@ -202,7 +202,7 @@
                         </DockPanel>
                         <TextBlock x:Name="CustomizationHint" FontSize="10" Margin="6,0,6,6" MaxWidth="450"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
-                                   Text="拖到工具栏上以固定。右键点击以隐藏或取消固定。" />
+                                   Text="拖到工具栏上以固定。右键点击取消固定。" />
                         <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}"
                                 Margin="2,0,2,4" />
                         <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="170">

@@ -35,23 +35,28 @@ public partial class ToolbarWindow
             surface.PreviewMouseMove += (_, e) =>
             {
                 if (e.LeftButton != MouseButtonState.Pressed) { pressedButton = null; return; }
-                if (pressedButton?.Tag is not IAction action || _draggingAction != null) return;
+                if (_draggingAction != null) return;
                 var point = e.GetPosition(surface);
                 if (Math.Abs(point.X - pressPoint.X) < SystemParameters.MinimumHorizontalDragDistance
                     && Math.Abs(point.Y - pressPoint.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+                if (pressedButton?.Tag is not IAction action) return;
 
-                // 在进入OLE的嵌套拖动循环之前，释放按钮的点击捕获。
-                pressedButton.ReleaseMouseCapture();
+                // 先占住拖动标志、收起按下态，再释放捕获：ReleaseMouseCapture 会同步重放鼠标输入，
+                // 重入本处理器时会被 _draggingAction / 空按下态拦下，避免二次进入 OLE 拖动。
+                _draggingAction = action;
+                var release = pressedButton;
                 pressedButton = null;
                 e.Handled = true;
-                _draggingAction = action;
                 _dismissTimer.Stop();
+                // 弹出层在拖动期间绝不能关闭：dragSource（SubMenuPanel）随 Popup 关闭退出可视树后，
+                // OLE 拖动循环永远等不到结束条件，之后所有拖动都会报“拖动操作已在进行中”。
+                CancelHoverClose();
+                release?.ReleaseMouseCapture();
                 try { DragDrop.DoDragDrop(surface, new DataObject(ActionDragFormat, action.Id), DragDropEffects.Move); }
                 catch (System.Runtime.InteropServices.COMException ex)
                 {
-                    // OLE 偶发报告“拖动操作已在进行中”（0x80004005）：上一次拖动的退出与本次输入
-                    // 重放存在竞态，DoDragDrop 会直接抛出而不是开始拖动。丢弃这次拖动即可；不捕获
-                    // 会冒泡到 DispatcherUnhandledException 记成 ERR 噪声。
+                    // OLE 报告“拖动操作已在进行中”（0x80004005）：已有拖动循环未退出。丢弃这次拖动即可；
+                    // 不捕获会冒泡到 DispatcherUnhandledException 记成 ERR 噪声。
                     Log.Info("Toolbar drag skipped: OLE already dragging (" + ex.Message + ")");
                 }
                 finally
@@ -59,6 +64,10 @@ public partial class ToolbarWindow
                     _draggingAction = null;
                     PinDropIndicator.Visibility = Visibility.Collapsed;
                     FinishCustomizationInteraction();
+                    // 拖动期间豁免了弹出层的 hover 关闭；收尾补一次：鼠标不在弹出层或分类按钮上才延迟关闭。
+                    if (SubMenuPopup.IsOpen && !SubMenuPopup.IsMouseOver
+                        && !TransformButton.IsMouseOver && !EncodeButton.IsMouseOver)
+                        ScheduleHoverClose();
                 }
             };
         }
@@ -124,10 +133,10 @@ public partial class ToolbarWindow
     {
         if (!editing)
         {
-            bool readOnly = action is IOperationAction && !_isEditable && !_isPasteMode;
+            var readOnly = action is IOperationAction && !_isEditable && !_isPasteMode;
             button.IsEnabled = !readOnly && action.CanExecute(_selectedText, _analysis);
             button.Opacity = button.IsEnabled ? 1 : 0.45;
-            string hint = readOnly ? "在可编辑输入中选择文本以使用此操作。"
+            var hint = readOnly ? "在可编辑输入中选择文本以使用此操作。"
                 : !button.IsEnabled ? "此操作不适用于当前选择。" : "拖动以固定或重新排序。右键单击可查看选项。";
             button.ToolTip = action.Name + " — " + hint;
             System.Windows.Automation.AutomationProperties.SetHelpText(button, hint);
@@ -146,7 +155,10 @@ public partial class ToolbarWindow
             else ToolbarPreferences.Pin(settings, action);
             SettingsManager.Save();
         };
+        var close = new MenuItem { Header = "关闭" };
+        close.Click += (_, _) => menu.IsOpen = false;
         menu.Items.Add(pin);
+        menu.Items.Add(close);
         // var hide = new MenuItem { Header = hidden ? "显示操作" : "隐藏操作" };
         // hide.Click += (_, _) => { ToolbarPreferences.SetHidden(settings, action, !hidden); SettingsManager.Save(); };
         // menu.Items.Add(hide);
@@ -160,7 +172,17 @@ public partial class ToolbarWindow
             menu.Items.Add(left); menu.Items.Add(right);
         }
         menu.Opened += (_, _) => { _activeActionMenu = menu; _dismissTimer.Stop(); };
-        menu.Closed += (_, _) => { _activeActionMenu = null; FinishCustomizationInteraction(); };
+        menu.Closed += (_, _) =>
+        {
+            _activeActionMenu = null;
+            FinishCustomizationInteraction();
+            // 悬停模式的菜单收起后补一次延迟关闭：菜单弹出时鼠标已离开弹出层，那次 MouseLeave
+            // 调度的关闭被上面的守卫挡住了；此处补上，鼠标若仍在弹出层/分类按钮上则不会关。
+            if (SettingsManager.Current.HoverOpen && SubMenuPopup.IsOpen
+                && !SubMenuPopup.IsMouseOver
+                && !TransformButton.IsMouseOver && !EncodeButton.IsMouseOver)
+                ScheduleHoverClose();
+        };
         button.ContextMenu = menu;
         ContextMenuService.SetShowOnDisabled(button, true);
     }
@@ -196,7 +218,7 @@ public partial class ToolbarWindow
             else RebuildCurrentSubMenu();
         }
         CustomizationHint.Text = SettingsManager.LastSaveError
-            ?? "拖到工具栏上以固定。单击鼠标右键隐藏或取消固定。";
+            ?? "拖到工具栏上以固定。单击鼠标取消固定。";
         if (!IsVisible) return;
         UpdateLayout();
         var bounds = ScreenHelper.GetScreenBounds(_anchorPoint);

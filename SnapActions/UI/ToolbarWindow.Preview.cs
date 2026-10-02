@@ -114,6 +114,8 @@ public partial class ToolbarWindow
     private void InlineButton_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         ResetPreview();
+        // 拖动进行中不关闭弹出层：dragSource（SubMenuPanel 内容）退出可视树会让 OLE 拖动被取消。
+        if (_draggingAction != null) return;
         if (_hoverPreviewMode)
         {
             SubMenuPopup.IsOpen = false;
