@@ -47,6 +47,13 @@ public partial class ToolbarWindow
                 _draggingAction = action;
                 _dismissTimer.Stop();
                 try { DragDrop.DoDragDrop(surface, new DataObject(ActionDragFormat, action.Id), DragDropEffects.Move); }
+                catch (System.Runtime.InteropServices.COMException ex)
+                {
+                    // OLE 偶发报告“拖动操作已在进行中”（0x80004005）：上一次拖动的退出与本次输入
+                    // 重放存在竞态，DoDragDrop 会直接抛出而不是开始拖动。丢弃这次拖动即可；不捕获
+                    // 会冒泡到 DispatcherUnhandledException 记成 ERR 噪声。
+                    Log.Info("Toolbar drag skipped: OLE already dragging (" + ex.Message + ")");
+                }
                 finally
                 {
                     _draggingAction = null;

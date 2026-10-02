@@ -51,4 +51,10 @@ public static class IconGlyphs
     // 设置窗口左侧导航图标
     public const string Add  = "\uE710";  // Add
     public const string Apps = "\uE8F1";  // AllApps
+    
+    // 系统托盘菜单图标
+    public const string Computer = "\uea6c";  // Computer
+    public const string AutoStartEnable = "\ue8fb";  // AutoStartEnable
+    public const string AutoStartDisable = "\ue711";  // AutoStartDisable
+    public const string Exit = "\ue7e8";  // Exit
 }

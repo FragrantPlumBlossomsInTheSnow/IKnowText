@@ -1073,24 +1073,50 @@ internal static class UiaSelectionProvider
         finally
         {
             // RestoreClipboardIfUnchanged 内部会 Dispose snapshot；只有未入账写时我们手动释放。
-            if (acceptedWrite is { } ak && operation.IsCurrent)
+            // 不再要求 operation.IsCurrent：操作可能已被新的选区取代，但这次注入造成的剪贴板副作用
+            // 仍必须撤销。还原只在锁内基线仍与本次写入完全一致时才生效，不会覆盖第三方内容。
+            if (acceptedWrite is { } ak)
             {
                 if (snapshot != null)
                 {
+                    bool restored = false;
                     await Application.Current.Dispatcher.InvokeAsync(() =>
-                        ClipboardTransaction.RestoreClipboardIfUnchanged(snapshot, ak));
+                        restored = ClipboardTransaction.RestoreClipboardIfUnchanged(snapshot, ak));
+                    SnapActions.Helpers.Log.Info(
+                        $"Clipboard restore finished: ok={restored}, acceptedSeq={ak.Sequence}");
                 }
                 else
                 {
                     // 原剪贴板为空：仅当剪贴板仍是本次写入的内容时清空，把剪贴板恢复为“空”。
+                    // 剪贴板锁竞争会让观察瞬时不可用（返回全 0），与快照路径一样做短延迟重试；
+                    // 仍失败则把残留记进台账，下一次快照按“空”处理它，泄漏不会继承下去。
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        try
+                        for (int attempt = 0; attempt < 3; attempt++)
                         {
-                            if (ClipboardTransaction.ObserveClipboard() == ak)
-                                Clipboard.Clear();
+                            if (attempt > 0) Thread.Sleep(20);
+                            try
+                            {
+                                var now = ClipboardTransaction.ObserveClipboard();
+                                if (now == ak)
+                                {
+                                    Clipboard.Clear();
+                                    ClipboardTransaction.ClearUnrestoredWrite();
+                                    SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=True, empty baseline cleared");
+                                    return;
+                                }
+                                if (now.Sequence != 0 && now.OwnerWindow != IntPtr.Zero)
+                                {
+                                    // 已被第三方内容取代：我们的写入不复存在，也没有可清的东西。
+                                    ClipboardTransaction.ClearUnrestoredWrite();
+                                    SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=True (write already replaced)");
+                                    return;
+                                }
+                            }
+                            catch { /* 清空失败不致命，任务已读回文本；下一轮重试或记台账 */ }
                         }
-                        catch { /* 清空失败不致命，任务已读回文本 */ }
+                        ClipboardTransaction.NoteUnrestoredWrite(ClipboardTransaction.ObserveClipboard());
+                        SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=False (empty baseline not cleared), residue noted");
                     });
                 }
             }
@@ -1105,9 +1131,17 @@ internal static class UiaSelectionProvider
         SelectionOperation operation, ClipboardTransaction.ClipboardObservation before, bool useCtrlC)
     {
         var outcome = await InputExecutor.TrySimulateCopyAsync(operation, before, useCtrlC);
-        bool delivered = outcome.Status == InputExecutor.InputInjectionStatus.Succeeded;
+        // Partial：按键序列只送出了一部分（例如 Ctrl 的抬起失败），复制可能已经发生，仍按"可能
+        // 已投递"观察并清理；Rejected（一个按键都没送出）时剪贴板不可能因本次注入变化，直接返回。
+        bool delivered = outcome.Status != InputExecutor.InputInjectionStatus.Rejected;
         string? text = null;
         ClipboardTransaction.ClipboardObservation? acceptedWrite = null;
+        if (!delivered)
+        {
+            SnapActions.Helpers.Log.Info(
+                $"Synthetic copy ({(useCtrlC ? "Ctrl+C" : "Ctrl+Insert")}): status=Rejected, nothing delivered");
+            return (null, null);
+        }
         for (int i = 0; i < 30; i++)
         {
             await Task.Delay(10);
@@ -1117,33 +1151,35 @@ internal static class UiaSelectionProvider
                 if (i < 29) continue;
                 break; // 目标未写剪贴板（无选区或拒绝）
             }
-            bool targetStillValid = operation.IsCurrent
-                                    && await ForegroundGuard.StillValidAsync(operation.Target);
-            var ownership = ClipboardTransaction.ClassifyClipboardMutation(
-                before, after, delivered, operation.Target.ProcessId, targetStillValid);
-            if (ClipboardTransaction.CanReadClipboardMutation(ownership))
+            if (ClipboardTransaction.IsClipboardOwnedByProcess(after, operation.Target.ProcessId))
             {
+                // 归属判定只要求两件事：注入确实投递了，且此刻剪贴板由目标进程持有——那就是本次合成
+                // 复制的产物。不再要求"能证明是我们的单步写入"：注入前的观察在剪贴板本为空（序列号 0）
+                // 时不可用，目标进程多格式发布还会更换属主窗口，旧判据在这些情况下会一律拒绝——
+                // 既读不到文本、又不清理，合成复制的内容就留在用户剪贴板上（restorable=False 的实际来源）。
+                // 清理的安全性不依赖这个判定：RestoreClipboardIfUnchanged 会在 OpenClipboard 锁内二次校验
+                // 基线，期间第三方的新写入只会让还原失败，而不会被覆盖。
                 text = await ClipboardTransaction.ReadCurrentClipboardTextAsync();
                 var afterRead = ClipboardTransaction.ObserveClipboard();
-                if (ClipboardTransaction.ContinuesOwnedClipboard(
-                        after, afterRead, operation.Target.ProcessId))
+                if (ClipboardTransaction.IsClipboardOwnedByProcess(afterRead, operation.Target.ProcessId))
                 {
-                    // 放宽还原门槛：Chromium/目标进程复制会多次发布剪贴板格式（文本+HTML+元数据），
-                    // seq 常跳多步 → OwnedUnrestorable。只要读取期间剪贴板未再变（after==afterRead），
-                    // 目标进程仍持有，就允许还原——RestoreClipboardIfUnchanged 锁定后会二次校验
-                    // acceptedWrite 观察，第三方新写入会失败还原而不是被覆盖。修复划词后选中文本
-                    // 残留在剪贴板（日志 restorable=False 大量命中）。
-                    if ((ownership is ClipboardTransaction.ClipboardMutationOwnership.Owned
-                            or ClipboardTransaction.ClipboardMutationOwnership.OwnedUnrestorable)
-                        && ClipboardTransaction.CanRestoreClipboard(after, afterRead))
-                        acceptedWrite = afterRead;
+                    acceptedWrite = afterRead;
                 }
                 else
                 {
-                    text = null; // 读取期间被其它进程改写——不接受，也不恢复
+                    text = null;               // 读取期间被第三方改写：文本不可信
+                    acceptedWrite = after;     // 仍按注入后的观察尝试清理（锁内校验不过则自动放弃）
                 }
+                break;
             }
-            break;
+            // 序列号已变，但这次观察不可用（属主为空/两次采样不一致）：目标进程发布剪贴板时会
+            // 先 EmptyClipboard 再写入，属主短暂为空；多格式发布过程中采样也常不稳定。这些都是瞬态，
+            // 就此放弃会同时丢掉读取与清理，稍后完成的写入就留在用户剪贴板上。继续观察：稍后稳定
+            // 由目标进程持有即入账并清理；始终不可用则耗尽后放弃，第三方内容不受影响。
+            if (i < 29) continue;
+            SnapActions.Helpers.Log.Info(
+                "Synthetic copy gave up observing: clipboard changed but never seen owned by target " +
+                $"(seq={after.Sequence}, ownerPid={after.OwnerProcessId}, targetPid={operation.Target.ProcessId})");
         }
         SnapActions.Helpers.Log.Info(
             $"Synthetic copy ({(useCtrlC ? "Ctrl+C" : "Ctrl+Insert")}): status={outcome.Status}, " +

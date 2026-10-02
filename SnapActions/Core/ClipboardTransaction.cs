@@ -20,6 +20,12 @@ internal static class ClipboardTransaction
     private const uint CF_GDIOBJLAST = 0x03FF;
     private const uint GMEM_MOVEABLE = 0x0002;
     private static IntPtr _clipboardOwnerWindow;
+    // 本应用写入、但尚未确认清理成功的剪贴板观察。合成复制若因锁竞争/观察漂移没能还原，
+    // 剪贴板里留下的就是划词文本；下一次快照会把它误当“用户原内容”保护并恢复，泄漏因此
+    // 固化并随每次划词传递。台账把自身残留标记出来，快照见到它按“剪贴板为空”处理
+    // （恢复即清空），清理失败也能自愈。
+    private static readonly object UnrestoredWriteGate = new();
+    private static ClipboardObservation? _unrestoredWrite;
     // must still duplicate every one of them before clipboard-mutating capture is allowed.
     private static readonly HashSet<string> RoundTrippableFormats = new(StringComparer.Ordinal)
     {
@@ -286,6 +292,39 @@ internal static class ClipboardTransaction
         && current.Sequence != 0
         && current.OwnerWindow == accepted.OwnerWindow
         && current.OwnerProcessId == expectedOwnerProcessId;
+
+    /// <summary>
+    /// 观察是否由指定进程持有且可信：序列号非 0、属主窗口有效、属主进程匹配。
+    /// 合成复制用它判定"此刻剪贴板内容就是本次注入的产物"，从而愿意读取与清理。
+    /// 比 <see cref="ContinuesOwnedClipboard"/> 宽松——不要求两次观察属主窗口一致，因为目标进程
+    /// 多格式发布时会更换属主窗口；旧判据在这些情况下会放弃清理，把划词文本留在用户剪贴板上。
+    /// </summary>
+    internal static bool IsClipboardOwnedByProcess(
+        ClipboardObservation observation,
+        uint processId) =>
+        observation.Sequence != 0
+        && observation.OwnerWindow != IntPtr.Zero
+        && processId != 0
+        && observation.OwnerProcessId == processId;
+
+    /// <summary>记录一份未能清理的自身写入；观察不可用（序列号 0）时忽略，避免误标。</summary>
+    internal static void NoteUnrestoredWrite(ClipboardObservation write)
+    {
+        if (write.Sequence == 0) return;
+        lock (UnrestoredWriteGate) _unrestoredWrite = write;
+    }
+
+    internal static void ClearUnrestoredWrite()
+    {
+        lock (UnrestoredWriteGate) _unrestoredWrite = null;
+    }
+
+    /// <summary>当前剪贴板是否恰为本应用未清理的写入残留。</summary>
+    private static bool IsUnrestoredWrite(ClipboardObservation current)
+    {
+        lock (UnrestoredWriteGate)
+            return _unrestoredWrite is { } write && write == current;
+    }
 
     internal static bool CanStartClipboardWrite(
         ClipboardSnapshot snapshot, ClipboardObservation current) =>
@@ -685,6 +724,17 @@ internal static class ClipboardTransaction
         try
         {
             var observationBefore = ObserveClipboard();
+            // 自身残留识别：上一次合成复制因锁竞争/漂移没能还原，剪贴板里此刻就是划词文本。
+            // 把它当作“空”来保护（恢复即清空）——否则会被当作“用户原内容”在本次恢复回去，
+            // 泄漏就固化了。识别即清台账：本次流程会处理这份残留。
+            if (IsUnrestoredWrite(observationBefore))
+            {
+                ClearUnrestoredWrite();
+                SnapActions.Helpers.Log.Info("Clipboard snapshot: unreleased synthetic write treated as empty");
+                return new ClipboardSnapshot(
+                    new Dictionary<string, object>(), observationBefore,
+                    new List<NativeClipboardFormatBackup>());
+            }
             // 剪贴板为空（序列号 0 且无任何格式）：快照平凡地“完整” —— 快照即空，恢复即清空。
             // 不能在下面走 IsCompleteSnapshot（它硬性要求 before.Sequence != 0，空剪贴板恒为 0，
             // 会把空剪贴板误判为“快照失败”，从而让合成键兜底被放弃）。
@@ -803,41 +853,84 @@ internal static class ClipboardTransaction
         List<NativeClipboardFormatBackup>? rollback = null;
         try
         {
-            if (original == null) return false;
+            if (original == null)
+            {
+                // 快照没有原生负载（一次性负载已被取走或构造时未提供）：无法还原，记为残留。
+                SnapActions.Helpers.Log.Info("Clipboard restore failed: snapshot has no native payload");
+                NoteUnrestoredWrite(ObserveClipboard());
+                return false;
+            }
             IntPtr ownerWindow = nativeClipboard.GetOwnerWindow();
-            if (ownerWindow == IntPtr.Zero) return false;
+            if (ownerWindow == IntPtr.Zero)
+            {
+                SnapActions.Helpers.Log.Info("Clipboard restore failed: no own window to associate the clipboard with");
+                NoteUnrestoredWrite(ObserveClipboard());
+                return false;
+            }
 
-            return TryRunLockedClipboardRestore(
-                acceptedWrite,
-                openClipboard: () => nativeClipboard.Open(ownerWindow),
-                observeClipboard: nativeClipboard.Observe,
-                restoreClipboard: () =>
+            // 剪贴板锁常被其他进程短暂持有（其正在复制/粘贴，几十毫秒内释放）。一次失败就放弃
+            // 会把合成复制的文本留在剪贴板上，因此与快照路径一样做短延迟重试；若期间剪贴板已
+            // 漂移（不再是入账的那次写入），重试没有意义也不该覆盖第三方内容，直接放弃并清台账
+            // （我们的写入已被覆盖，不存在残留）。
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                if (attempt > 0) Thread.Sleep(30);
+                if (TryRunLockedClipboardRestore(
+                    acceptedWrite,
+                    openClipboard: () => nativeClipboard.Open(ownerWindow),
+                    observeClipboard: nativeClipboard.Observe,
+                    restoreClipboard: () =>
+                    {
+                        if (original.Count == 0)
+                            return nativeClipboard.Empty();
+
+                        // Preserve the temporary clipboard as rollback material before EmptyClipboard.
+                        // Format reads can force delayed rendering, so recheck the exact accepted
+                        // observation after duplication and before the first mutation.
+                        if (rollback != null)
+                        {
+                            FreeNativeClipboardBackups(rollback);
+                            rollback = null;
+                        }
+                        rollback = nativeClipboard.DuplicateFormats();
+                        if (rollback == null
+                            || !CanRestoreClipboard(
+                                acceptedWrite, nativeClipboard.Observe()))
+                            return false;
+
+                        // A failed SetClipboardData may leave a partial original. Remove it while the
+                        // lock is still held and put back the pre-mutation temporary clipboard.
+                        return TryReplaceClipboardContentsUnderLock(
+                            emptyClipboard: nativeClipboard.Empty,
+                            restoreDesired: () =>
+                                nativeClipboard.RestoreFormats(original),
+                            restoreRollback: () =>
+                                nativeClipboard.RestoreFormats(rollback));
+                    },
+                    closeClipboard: nativeClipboard.Close))
                 {
-                    if (original.Count == 0)
-                        return nativeClipboard.Empty();
+                    ClearUnrestoredWrite();
+                    return true;
+                }
 
-                    // Preserve the temporary clipboard as rollback material before EmptyClipboard.
-                    // Format reads can force delayed rendering, so recheck the exact accepted
-                    // observation after duplication and before the first mutation.
-                    rollback = nativeClipboard.DuplicateFormats();
-                    if (rollback == null
-                        || !CanRestoreClipboard(
-                            acceptedWrite, nativeClipboard.Observe()))
-                        return false;
+                var current = ObserveClipboard();
+                if (!CanRestoreClipboard(acceptedWrite, current))
+                {
+                    SnapActions.Helpers.Log.Info(
+                        $"Clipboard restore skipped: clipboard moved on " +
+                        $"(acceptedSeq={acceptedWrite.Sequence}, nowSeq={current.Sequence})");
+                    ClearUnrestoredWrite();
+                    return false;
+                }
+            }
 
-                    // A failed SetClipboardData may leave a partial original. Remove it while the
-                    // lock is still held and put back the pre-mutation temporary clipboard.
-                    return TryReplaceClipboardContentsUnderLock(
-                        emptyClipboard: nativeClipboard.Empty,
-                        restoreDesired: () =>
-                            nativeClipboard.RestoreFormats(original),
-                        restoreRollback: () =>
-                            nativeClipboard.RestoreFormats(rollback));
-                },
-                closeClipboard: nativeClipboard.Close);
+            SnapActions.Helpers.Log.Info("Clipboard restore failed: clipboard stayed locked across retries");
+            NoteUnrestoredWrite(ObserveClipboard());
+            return false;
         }
         catch
         {
+            NoteUnrestoredWrite(ObserveClipboard());
             return false;
         }
         finally

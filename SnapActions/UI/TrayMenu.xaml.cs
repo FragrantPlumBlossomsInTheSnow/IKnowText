@@ -1,12 +1,12 @@
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows.Controls;
+using System.Windows;
 using H.NotifyIcon;
 using SnapActions.Config;
 using SnapActions.Helpers;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using MenuItem = System.Windows.Controls.MenuItem;
-using TextBlock = System.Windows.Controls.TextBlock;
+using FrameworkElement = System.Windows.FrameworkElement;
 
 namespace SnapActions.UI;
 
@@ -20,9 +20,9 @@ public class TrayMenu : IDisposable
 {
     private TaskbarIcon? _trayIcon;
     private SettingsWindow? _settingsWindow;
-    private MenuItem? _enableItem;
     private MenuItem? _autoStartItem;
-    private TextBlock? _statusHeader;
+    private MenuItem? _settingsItem;
+    private MenuItem? _exitItem;
 
     public void Dispose()
     {
@@ -33,70 +33,68 @@ public class TrayMenu : IDisposable
     public void Initialize()
     {
         _trayIcon = (TaskbarIcon)Application.Current.FindResource("TrayIcon");
-        var menu = (ContextMenu)Application.Current.FindResource("TrayContextMenu");
-
-        _enableItem = Item(menu, "enable");
-        _autoStartItem = Item(menu, "autostart");
-        _statusHeader = menu.Items.OfType<TextBlock>().FirstOrDefault(t => (string?)t.Tag == "status");
-
-        if (_enableItem != null)
+        
+        var menu = _trayIcon.ContextMenu;
+        if (menu != null)
         {
-            _enableItem.Checked += (_, _) => SetEnabled(true);
-            _enableItem.Unchecked += (_, _) => SetEnabled(false);
+            _autoStartItem = FindMenuItem(menu, "AutoStartItem");
+            _settingsItem = FindMenuItem(menu, "SettingsItem");
+            _exitItem = FindMenuItem(menu, "ExitItem");
         }
+
         if (_autoStartItem != null)
         {
-            _autoStartItem.Checked += (_, _) => SetAutoStart(true);
-            _autoStartItem.Unchecked += (_, _) => SetAutoStart(false);
+            _autoStartItem.Click += (_, _) => SetAutoStart();
+            SetAutoStartGlyph();
         }
-        if (Item(menu, "settings") is { } settingsItem) settingsItem.Click += (_, _) => ShowSettings();
-        if (Item(menu, "exit") is { } exitItem) exitItem.Click += (_, _) => Application.Current.Shutdown();
+        
+        if (_settingsItem != null)
+            _settingsItem.Click += (_, _) => ShowSettings();
+        
+        if (_exitItem != null)
+            _exitItem.Click += (_, _) => Application.Current.Shutdown();
 
         // Refresh check states from settings every time the tray menu opens so changes made via the
         // Settings window don't leave the tray showing stale state.
-        menu.Opened += (_, _) => SyncStates();
 
         _trayIcon.Icon = CreateDefaultIcon();
-        _trayIcon.TrayMouseDoubleClick += (_, _) => ShowSettings();
+        _trayIcon.TrayLeftMouseDown += (_, _) => ShowSettings();
         _trayIcon.ForceCreate();
     }
-
-    /// <summary>按 Tag 找菜单项：外观（XAML）与行为（本文件）通过 Tag 约定连接，互不依赖控件顺序。</summary>
-    private static MenuItem? Item(ContextMenu menu, string tag) =>
-        menu.Items.OfType<MenuItem>().FirstOrDefault(i => (string?)i.Tag == tag);
-
-    private void SyncStates()
+    
+    private static MenuItem? FindMenuItem(ContextMenu menu, string tag)
     {
-        if (_enableItem != null) _enableItem.IsChecked = SettingsManager.Current.Enabled;
-        if (_autoStartItem != null) _autoStartItem.IsChecked = SettingsManager.Current.AutoStart;
-        if (_statusHeader != null)
-            _statusHeader.Text = SettingsManager.Current.Enabled ? "SnapActions · 已启用" : "SnapActions · 已暂停";
+        foreach (var obj in menu.Items)
+            if (obj is MenuItem mi && (string?)mi.Tag == tag)
+                return mi;
+        return null;
     }
 
-    private static void SetEnabled(bool enabled)
+    private static void SetAutoStart()
     {
-        // Avoid recursion: only act when the user changed it (not the Opening sync above).
-        if (SettingsManager.Current.Enabled == enabled) return;
-        SettingsManager.Current.Enabled = enabled;
+        SettingsManager.SetAutoStart(!SettingsManager.Current.AutoStart);
+        SetAutoStartGlyph();
         SettingsManager.Save();
     }
-
-    private static void SetAutoStart(bool enabled)
+    
+    private static void SetAutoStartGlyph()
     {
-        if (SettingsManager.Current.AutoStart == enabled) return;
-        SettingsManager.SetAutoStart(enabled);
+        TrayIconState.Instance.AutoStartGlyph = SettingsManager.Current.AutoStart
+            ? IconGlyphs.AutoStartEnable
+            : IconGlyphs.AutoStartDisable;
     }
 
     private void ShowSettings()
     {
         if (_settingsWindow is { IsVisible: true })
         {
-            _settingsWindow.Activate();
+            _settingsWindow.Close();
             return;
         }
 
         _settingsWindow = new SettingsWindow();
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        
         _settingsWindow.Show();
         _settingsWindow.Activate();
     }

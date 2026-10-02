@@ -281,7 +281,7 @@
                                     <Border Style="{StaticResource SettingDivider}" />
                                     <CheckBox x:Name="UseSyntheticKeys"
                                               Content="允许发送合成键"
-                                              ToolTip="启用此选项后，会使用合成按键保证工具栏能够在大部分情况下弹出，但会短暂修改你的剪切板，也可能影响部分程序的使用体验"
+                                              ToolTip="启用此选项后，会使用合成按键保证工具栏能够在大部分情况下弹出，但会短暂修改你的剪切板，也会影响部分程序的使用体验"
                                               Style="{StaticResource SettingCheckBoxStyle}"
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
 

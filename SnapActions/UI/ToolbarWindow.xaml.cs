@@ -736,6 +736,7 @@ public partial class ToolbarWindow : Window
 
     private async void CopyButton_Click(object sender, RoutedEventArgs e)
     {
+        Log.Info("Copy button clicked");
         var gen = _generation;
         if (!TryStartToolbarAction(out var operation)) return;
         if (!await operation.CanUseSelectionAsync())
