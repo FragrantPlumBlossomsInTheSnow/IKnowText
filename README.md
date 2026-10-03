@@ -7,9 +7,11 @@ A Windows selection toolbar that appears when you select text — an independent
 
 仓库 <https://github.com/XuejiMeixiangli/IKnowText> · 详细文档：[用户指南](docs/user-guide.md)
 
-![截图](docs/images/use-zh.png)
+## 如何使用
 
-## 快速开始
+工具栏会出现在鼠标上方：选中一段文本，然后用它复制、粘贴、翻译、转换和搜索，无需离开工作窗口。
+
+![工具栏](docs/images/use-zh.png)
 
 1. 下载发布包，解压到固定位置 —— 单文件自包含，免安装、不需要 WebView2
 2. 运行 `IKnowText.exe`（需要管理员权限：动作要向其它程序注入按键）
