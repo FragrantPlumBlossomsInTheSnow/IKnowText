@@ -240,7 +240,7 @@ python tools/package.py
 
 `SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained single-file executable, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders of the settings pages, tray menu, toolbar and editors. It never replaces an existing installation. NuGet dependencies are restored in locked mode and `global.json` pins the SDK. `SnapActions/publish.bat` is the shortcut for a plain single-file publish without the verification steps.
 
-For isolated manual testing, set `IKONWTEXT_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
+For isolated manual testing, set `IKNOWTEXT_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
 
 ## Tests & CI
 

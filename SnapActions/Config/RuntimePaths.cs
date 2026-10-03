@@ -15,7 +15,7 @@ internal static class RuntimePaths
     /// </summary>
     private static readonly string[] LegacyDirectories =
     [
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "IKonwText"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "IKnowText"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SnapActions"),
     ];
 
@@ -27,7 +27,7 @@ internal static class RuntimePaths
 
     private static string ResolveDataDirectory()
     {
-        var path = Environment.GetEnvironmentVariable("IKONWTEXT_DATA_DIR");
+        var path = Environment.GetEnvironmentVariable("IKNOWTEXT_DATA_DIR");
         return string.IsNullOrWhiteSpace(path)
             ? DefaultDirectory
             : Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
@@ -36,7 +36,7 @@ internal static class RuntimePaths
     /// <summary>
     ///     一次性数据迁移：新目录里还没有 settings.json 时，从 <see cref="LegacyDirectories"/> 里第一个有数据的
     ///     旧目录复制 settings.json（含 .broken-* 备份）与所有 scripts\*.js（自定义 JS 动作、翻译引擎脚本）。
-    ///     旧目录保留不删除，日志不搬；隔离实例（IKONWTEXT_DATA_DIR）不参与迁移。
+    ///     旧目录保留不删除，日志不搬；隔离实例（IKNOWTEXT_DATA_DIR）不参与迁移。
     /// </summary>
     internal static void MigrateLegacyDataDirectory()
     {

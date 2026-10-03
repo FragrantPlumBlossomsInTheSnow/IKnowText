@@ -54,7 +54,7 @@ SnapActions\build.bat     :: 完整打包 + 校验（ZIP 与校验和落在 arti
 | [发布说明](docs/releases) | 各版本变更 |
 | [LICENSE](LICENSE) | MIT，版权归上游作者 roko-tech 所有 |
 
-**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。改名前的 `%APPDATA%\SnapActions`（以及中间拼错的 `%APPDATA%\IKonwText`）会在首次启动时自动迁移，旧目录保留不删。用环境变量 `IKONWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
+**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。改名前的 `%APPDATA%\SnapActions`（以及中间拼错的 `%APPDATA%\IKonwText`）会在首次启动时自动迁移，旧目录保留不删。用环境变量 `IKNOWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
 
 ## English
 
@@ -65,7 +65,7 @@ SnapActions\build.bat     :: 完整打包 + 校验（ZIP 与校验和落在 arti
 - Tray: five action-group toggles, auto-start, settings, exit. Online features are off by default
 - Self-contained single-file release: no .NET install, no WebView2, 64-bit Windows 10/11. Keep `LICENSE` and `licenses\` together with the executable when you redistribute it
 - Build: .NET SDK 10.0.400, `dotnet build SnapActions\SnapActions.csproj -c Release`; full gate: `SnapActions\build.bat`
-- Docs: [user guide](docs/user-guide.md) · data lives in `%APPDATA%\IKnowText` (override with `IKONWTEXT_DATA_DIR`) · MIT
+- Docs: [user guide](docs/user-guide.md) · data lives in `%APPDATA%\IKnowText` (override with `IKNOWTEXT_DATA_DIR`) · MIT
 
 > ⚠️ **Scripts can reach the network — treat them accordingly.** A script with network access ticked can send HTTP requests and read the responses, to whatever endpoint it names. **Never paste secrets (passwords, API keys, tokens) into a script, and do not run scripts you have not read or do not trust.** The sandbox blocks file and clipboard access and caps runtime and response size, but it cannot stop a script from uploading what you give it.
 
