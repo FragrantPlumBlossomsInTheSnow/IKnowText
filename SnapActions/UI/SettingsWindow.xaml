@@ -2,6 +2,7 @@
                  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:modern="http://schemas.inkore.net/lib/ui/wpf/modern"
                  xmlns:local="clr-namespace:SnapActions.UI"
                  FontSize="13" Title="SnapActions 设置" Width="740" Height="740" MinWidth="620" MinHeight="500"
                  WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
@@ -249,24 +250,24 @@
                                     <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
                                     <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
                                     <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <CheckBox x:Name="RestoreClipboardCheck"
-                                              Content="复制操作后约3秒恢复上一个剪贴板内容"
-                                              ToolTip="当您单击复制文本的工具栏操作（格式化JSON、转换颜色等）时，结果将落在剪贴板上。启用此选项后，之前的剪贴板内容将在大约3秒后放回，这足够您先粘贴结果。"
-                                              Style="{StaticResource SettingCheckBoxStyle}"
-                                              Checked="Setting_Changed" Unchecked="Setting_Changed" />
-                                    <Border Style="{StaticResource SettingDivider}" />
-                                    <CheckBox x:Name="OnlineLookupsCheck"
-                                              Content="允许在线查找（翻译）"
-                                              ToolTip="翻译将选定的文本发送到百度开放平台API。关闭此选项后，会在您选择之前询问。"
-                                              Style="{StaticResource SettingCheckBoxStyle}"
-                                              Checked="Setting_Changed" Unchecked="Setting_Changed" />
+                                    <!-- <CheckBox x:Name="RestoreClipboardCheck" -->
+                                    <!--           Content="复制操作后约3秒恢复上一个剪贴板内容" -->
+                                    <!--           ToolTip="当您单击复制文本的工具栏操作（格式化JSON、转换颜色等）时，结果将落在剪贴板上。启用此选项后，之前的剪贴板内容将在大约3秒后放回，这足够您先粘贴结果。" -->
+                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
+                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
+                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
+                                    <!-- <CheckBox x:Name="OnlineLookupsCheck" -->
+                                    <!--           Content="允许在线查找（翻译）" -->
+                                    <!--           ToolTip="翻译将选定的文本发送到百度开放平台API。关闭此选项后，会在您选择之前询问。" -->
+                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
+                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
                                     <!-- <Border Style="{StaticResource SettingDivider}" /> -->
                                     <!-- <CheckBox x:Name="CaptureOnMouseSelectionCheck" -->
                                     <!--           Content="选择文本时自动显示工具栏" -->
                                     <!--           ToolTip="自动选择捕获使用浏览器伴侣或UI自动化，从不复制或触摸剪贴板。如果应用程序没有显示所选文本，请使用下面的Ctrl+C触发器。" -->
                                     <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
                                     <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
-                                    <Border Style="{StaticResource SettingDivider}" />
+                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
                                     <CheckBox x:Name="CaptureOnCtrlCCheck"
                                               Content="按Ctrl+C时显示工具栏"
                                               ToolTip="启用此选项后，使用Ctrl+C复制文本也会弹出工具栏。这会读取您刚才复制的内容——无需合成按键，也无需清除剪贴板——因此不会干扰其他应用程序。"
@@ -274,7 +275,7 @@
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
                                     <Border Style="{StaticResource SettingDivider}" />
                                     <CheckBox x:Name="HoverOpenCheck"
-                                              Content="悬停展开（文本转换和编码/解码）子窗口"
+                                              Content="悬停展开子窗口"
                                               ToolTip="鼠标悬停到工具栏的（文本转换和编码/解码）项时自动展开子窗口"
                                               Style="{StaticResource SettingCheckBoxStyle}"
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
@@ -445,7 +446,7 @@
                             </Expander>
                             
                             <!-- Add custom search engine -->
-                            <ui:Card Style="{StaticResource WpfUiCardStyle}">
+                            <ui:Card Style="{StaticResource WpfUiCardStyle}">   
                                 <StackPanel>
                                     <TextBlock Text="添加自定义搜索" Style="{StaticResource WpfUiTextBlockStyle}" />
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
@@ -569,7 +570,7 @@
                             <Expander x:Name="BaiduExpander" Header="百度翻译" Style="{StaticResource WpfUiExpanderStyle}">
                                 <StackPanel>
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
-                                        <TextBlock Text="百度 App ID"
+                                        <TextBlock Text="APP ID"
                                                    DockPanel.Dock="Left"
                                                    Style="{StaticResource WpfUiTextBlockStyle}" />
                                         <ui:TextBox DockPanel.Dock="Right"
@@ -581,7 +582,7 @@
                                     </DockPanel>
                                     <Border Style="{StaticResource SettingDivider}" />
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
-                                        <TextBlock Text="百度密钥"
+                                        <TextBlock Text="密钥（不是API Key）"
                                                    DockPanel.Dock="Left"
                                                    Style="{StaticResource WpfUiTextBlockStyle}" />
                                         <ui:PasswordBox DockPanel.Dock="Right"
@@ -618,8 +619,6 @@
                             <!--         <ComboBoxItem Content="TRY" Tag="TRY" /> -->
                             <!--     </ComboBox> -->
                             <!-- </StackPanel> -->
-
-
                         </StackPanel>
                     </ScrollViewer>
                     <ScrollViewer x:Name="CustomPage" Visibility="Collapsed"

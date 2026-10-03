@@ -155,10 +155,7 @@ public partial class ToolbarWindow
             else ToolbarPreferences.Pin(settings, action);
             SettingsManager.Save();
         };
-        var close = new MenuItem { Header = "关闭" };
-        close.Click += (_, _) => menu.IsOpen = false;
         menu.Items.Add(pin);
-        menu.Items.Add(close);
         // var hide = new MenuItem { Header = hidden ? "显示操作" : "隐藏操作" };
         // hide.Click += (_, _) => { ToolbarPreferences.SetHidden(settings, action, !hidden); SettingsManager.Save(); };
         // menu.Items.Add(hide);
@@ -171,6 +168,9 @@ public partial class ToolbarWindow
             right.Click += (_, _) => MovePinned(action, 1);
             menu.Items.Add(left); menu.Items.Add(right);
         }
+        var close = new MenuItem { Header = "关闭" };
+        close.Click += (_, _) => menu.IsOpen = false;
+        menu.Items.Add(close);
         menu.Opened += (_, _) => { _activeActionMenu = menu; _dismissTimer.Stop(); };
         menu.Closed += (_, _) =>
         {
@@ -217,8 +217,6 @@ public partial class ToolbarWindow
             if (_hoverPreviewMode) { SubMenuPopup.IsOpen = false; ResetPreview(); }
             else RebuildCurrentSubMenu();
         }
-        CustomizationHint.Text = SettingsManager.LastSaveError
-            ?? "拖到工具栏上以固定。单击鼠标取消固定。";
         if (!IsVisible) return;
         UpdateLayout();
         var bounds = ScreenHelper.GetScreenBounds(_anchorPoint);

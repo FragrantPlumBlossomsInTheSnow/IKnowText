@@ -1005,8 +1005,8 @@ internal static class UiaSelectionProvider
     }
 
     /// <summary>
-    /// 合成复制兜底：对 UI Automation 读不到选区的应用（Java Swing 等），先 Ctrl+Insert、仍无结果
-    /// 再 Ctrl+C。整段受精确前台目标校验约束，快照→注入→读回→恢复到原剪贴板，杜绝污染用户剪贴板。
+    /// 合成复制兜底：对 UI Automation 读不到选区的应用（Java Swing 等），注入 Ctrl+Insert 复制选区。
+    /// 整段受精确前台目标校验约束，快照→注入→读回→恢复到原剪贴板，杜绝污染用户剪贴板。
     /// 剪贴板为空（没有可保护的内容）时仍允许注入，成功后把写入内容清空以恢复“空”状态。
     /// </summary>
     private static async Task<string?> TrySyntheticCopyAsync(SelectionOperation operation)
@@ -1055,19 +1055,9 @@ internal static class UiaSelectionProvider
                 return null;
             }
 
-            var (text, clipboardObservation) = await TryOneSyntheticCopyAsync(operation, before, useCtrlC: false);
+            var (text, clipboardObservation) = await TryOneSyntheticCopyAsync(operation, before);
             if (clipboardObservation is { } a1) acceptedWrite = a1;
 
-            // 暂时停用：Ctrl+C 可能被应用拦截（如 VS Code 的 Ctrl+C 复制行），导致划词后选区残留在剪贴板，用户粘贴时意外多出划词文本。
-            /*if (string.IsNullOrEmpty(text) && operation.IsCurrent)
-            {
-                var r2 = await TryOneSyntheticCopyAsync(operation, before, useCtrlC: true);
-                if (!string.IsNullOrEmpty(r2.Text) && r2.AcceptedWrite is { } a2)
-                {
-                    text = r2.Text;
-                    acceptedWrite = a2;
-                }
-            }*/
             return text;
         }
         finally
@@ -1128,9 +1118,9 @@ internal static class UiaSelectionProvider
     }
 
     private static async Task<(string? Text, ClipboardTransaction.ClipboardObservation? AcceptedWrite)> TryOneSyntheticCopyAsync(
-        SelectionOperation operation, ClipboardTransaction.ClipboardObservation before, bool useCtrlC)
+        SelectionOperation operation, ClipboardTransaction.ClipboardObservation before)
     {
-        var outcome = await InputExecutor.TrySimulateCopyAsync(operation, before, useCtrlC);
+        var outcome = await InputExecutor.TrySimulateCopyAsync(operation, before);
         // Partial：按键序列只送出了一部分（例如 Ctrl 的抬起失败），复制可能已经发生，仍按"可能
         // 已投递"观察并清理；Rejected（一个按键都没送出）时剪贴板不可能因本次注入变化，直接返回。
         bool delivered = outcome.Status != InputExecutor.InputInjectionStatus.Rejected;
@@ -1139,7 +1129,7 @@ internal static class UiaSelectionProvider
         if (!delivered)
         {
             SnapActions.Helpers.Log.Info(
-                $"Synthetic copy ({(useCtrlC ? "Ctrl+C" : "Ctrl+Insert")}): status=Rejected, nothing delivered");
+                "Synthetic copy (Ctrl+Insert): status=Rejected, nothing delivered");
             return (null, null);
         }
         for (int i = 0; i < 30; i++)
@@ -1182,7 +1172,7 @@ internal static class UiaSelectionProvider
                 $"(seq={after.Sequence}, ownerPid={after.OwnerProcessId}, targetPid={operation.Target.ProcessId})");
         }
         SnapActions.Helpers.Log.Info(
-            $"Synthetic copy ({(useCtrlC ? "Ctrl+C" : "Ctrl+Insert")}): status={outcome.Status}, " +
+            $"Synthetic copy (Ctrl+Insert): status={outcome.Status}, " +
             $"text={(text == null ? "null" : text.Length + " chars")}, restorable={acceptedWrite != null}");
         return (text, acceptedWrite);
     }

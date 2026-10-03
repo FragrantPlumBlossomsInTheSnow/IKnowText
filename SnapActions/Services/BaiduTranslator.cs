@@ -13,14 +13,13 @@ namespace SnapActions.Services;
 /// </summary>
 internal static class BaiduTranslator
 {
-    private const string Endpoint = "https://fanyi-api.baidu.com/ait/api/aiTextTranslate";
-    private const string ModelType = "nmt";
+    private const string Endpoint = "https://fanyi-api.baidu.com/api/trans/vip/translate";
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(8) };
 
-    // 500-byte cap matches the established API contract (unit tests pin 500/501 and 250/251
+    // 2000-byte cap matches the established API contract (unit tests pin 500/501 and 250/251
     // multibyte boundaries) — long selections were never the target use case for translate.
     internal static bool CanTranslate(string text) => !string.IsNullOrWhiteSpace(text)
-        && Encoding.UTF8.GetByteCount(text) <= 500;
+        && Encoding.UTF8.GetByteCount(text) <= 2000; // 500 chars * 4 bytes max per char
 
     /// <summary>Maps a SnapActions language code to Baidu's language code. Unknown/smaller
     /// language markers pass through lowercased and surface Baidu's error message if unsupported.</summary>
@@ -49,10 +48,10 @@ internal static class BaiduTranslator
         string text, string source, string target, string appid, string secret, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(appid) || string.IsNullOrEmpty(secret))
-            return ("", "No Baidu translation credentials configured. Set them in Settings.");
+            return ("", "未配置百度翻译凭证。请在设置中配置。");
         var from = string.IsNullOrWhiteSpace(source) ? "auto" : BaiduLanguage(source);
         var to = BaiduLanguage(target) ?? "en";
-        if (string.IsNullOrEmpty(to)) return ("", "Choose a target language for Baidu translation.");
+        if (string.IsNullOrEmpty(to)) return ("", "为百度翻译选择一种目标语言。");
 
         var salt = Random.Shared.NextInt64().ToString();
         var sign = BuildSign(appid, text, salt, secret);
@@ -64,7 +63,6 @@ internal static class BaiduTranslator
             ["appid"] = appid,
             ["salt"] = salt,
             ["sign"] = sign,
-            ["model_type"] = ModelType
         });
         string json;
         try
@@ -72,8 +70,8 @@ internal static class BaiduTranslator
             using var response = await Http.PostAsync(Endpoint, content, ct);
             json = await response.Content.ReadAsStringAsync(ct);
         }
-        catch (OperationCanceledException) { return ("", "Translation timed out. Try again."); }
-        catch { return ("", "Translation request failed. Check your network."); }
+        catch (OperationCanceledException) { return ("", "翻译超时，再试一次。"); }
+        catch { return ("", "翻译请求失败，检查您的网络。"); }
 
         try
         {
@@ -90,10 +88,10 @@ internal static class BaiduTranslator
                 var msg = doc.RootElement.TryGetProperty("error_msg", out var em)
                           && em.ValueKind == JsonValueKind.String
                     ? em.GetString() : "";
-                return ("", $"Baidu error {errorCode}: {msg}");
+                return ("", $"出错了： {errorCode}: {msg}");
             }
             if (!doc.RootElement.TryGetProperty("trans_result", out var arr) || arr.GetArrayLength() == 0)
-                return ("", "Baidu returned no translation.");
+                return ("", "请求未返回翻译结果。");
             var sb = new StringBuilder();
             foreach (var item in arr.EnumerateArray())
                 if (item.TryGetProperty("dst", out var dst)
@@ -101,12 +99,12 @@ internal static class BaiduTranslator
                     && !string.IsNullOrEmpty(dst.GetString()))
                     sb.AppendLine(dst.GetString());
             var result = sb.ToString().TrimEnd('\r', '\n');
-            return string.IsNullOrEmpty(result) ? ("", "Baidu returned an empty translation.") : (result, null);
+            return string.IsNullOrEmpty(result) ? ("", "请求返回了空翻译。") : (result, null);
         }
         catch (Exception)
         {
             // 解析边界兜底：任何响应解析异常都转为可读错误，绝不冒泡成未处理异常进全局日志。
-            return ("", "Could not parse Baidu's response.");
+            return ("", "无法解析响应。");
         }
     }
 }

@@ -31,14 +31,14 @@ internal sealed class SelectionCoordinator(BrowserSelectionBridge browser)
         }
         if (!operation.CanInjectInput || string.IsNullOrWhiteSpace(text) || text.Length > SelectionSnapshot.MaximumTextLength)
         {
-            if (!captured.Handled) CaptureDiagnostics.SetStatus("UIA selection unavailable, empty, ambiguous, or busy");
+            if (!captured.Handled) CaptureDiagnostics.SetStatus("UIA选择不可用、空、模糊或模糊");
             return null;
         }
         bool editable = await ForegroundGuard.RunBoundedAutomationAsync(ForegroundApp.IsEditableFieldFocused, false, 500);
         if (captured.Handled) editable &= captured.Editable;
         editable &= operation.HasInputValidation;
-        if (!operation.CanInjectInput) { CaptureDiagnostics.SetStatus("Selection became stale"); return null; }
-        CaptureDiagnostics.SetStatus($"{provider}: selection captured");
+        if (!operation.CanInjectInput) { CaptureDiagnostics.SetStatus("选择已过时"); return null; }
+        CaptureDiagnostics.SetStatus($"{provider}: 已捕获选择");
         started = Stopwatch.GetTimestamp();
         var analysis = new TextClassifier().Classify(text);
         CaptureDiagnostics.Record("Classification", started);

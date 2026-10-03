@@ -3,28 +3,99 @@
                     xmlns:tb="clr-namespace:H.NotifyIcon;assembly=H.NotifyIcon.Wpf"
                     xmlns:modern="http://schemas.inkore.net/lib/ui/wpf/modern"
                     xmlns:local="clr-namespace:SnapActions.UI">
-    
+
     <!-- 系统托盘菜单栏 -->
-    <ContextMenu x:Key="TrayContextMenu" MinWidth="80">
-        
-        <MenuItem Tag="AutoStartItem">
+    <ContextMenu x:Key="TrayContextMenu" MinWidth="90">
+
+        <MenuItem Tag="EnablePasteItem">
             <MenuItem.Header>
                 <DockPanel>
-                    <modern:FontIcon Glyph="{x:Static local:IconGlyphs.Computer}" FontSize="14" />
-                    <TextBlock Text="开机自启" Margin="15,0,0,0" />
-                    <modern:FontIcon Glyph="{Binding AutoStartGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Paste}" FontSize="18" />
+                    <TextBlock Width="80" Text="粘贴" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding PasteGlyph, Source={x:Static local:TrayIconState.Instance}}"
                                      FontSize="12" Margin="10,0,0,0" />
                 </DockPanel>
             </MenuItem.Header>
         </MenuItem>
 
+        <MenuItem Tag="EnableTranslateItem">
+            <MenuItem.Header>
+                <DockPanel>
+                    <Grid Width="24">
+                        <TextBlock Padding="0" Text="文" FontSize="14"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   HorizontalAlignment="Left" VerticalAlignment="Top" />
+                        <modern:FontIcon Glyph="{x:Static local:IconGlyphs.TranslateEn}" FontSize="14"
+                                         Foreground="{DynamicResource SystemFillColorAttentionBrush}"
+                                         HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+                    </Grid>
+                    <TextBlock Width="80" Text="翻译" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding TranslateGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                                     FontSize="12" Margin="10,0,0,0" />
+                </DockPanel>
+            </MenuItem.Header>
+        </MenuItem>
+
+        <MenuItem Tag="EnableTransformItem">
+            <MenuItem.Header>
+                <DockPanel>
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Transform}" FontSize="18" />
+                    <TextBlock Width="80" Text="文本转换" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding TransformGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                                     FontSize="12" Margin="10,0,0,0" />
+                </DockPanel>
+            </MenuItem.Header>
+        </MenuItem>
+
+        <MenuItem Tag="EnableEncodeItem">
+            <MenuItem.Header>
+                <DockPanel>
+                    <TextBlock Width="24" Text="‹/›" FontSize="18"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <TextBlock Width="80" Text="编码/解码" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding EncodeDecodeGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                                     FontSize="12" Margin="10,0,0,0" />
+                </DockPanel>
+            </MenuItem.Header>
+        </MenuItem>
+
+        <MenuItem Tag="EnableSearchItem">
+            <MenuItem.Header>
+                <DockPanel>
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Search}" FontSize="18" />
+                    <TextBlock Width="80" Text="网页搜索" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding SearchGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                                     FontSize="12" Margin="10,0,0,0" />
+                </DockPanel>
+            </MenuItem.Header>
+        </MenuItem>
+        
         <Separator />
+
+        <MenuItem Tag="AutoStartItem">
+            <MenuItem.Header>
+                <DockPanel>
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Computer}" FontSize="18" />
+                    <TextBlock Width="80" Text="开机自启" FontSize="14" Margin="20,0,0,0" />
+                    <modern:FontIcon DockPanel.Dock="Right"
+                                     Glyph="{Binding AutoStartGlyph, Source={x:Static local:TrayIconState.Instance}}"
+                                     FontSize="12" Margin="10,0,0,0" />
+                </DockPanel>
+            </MenuItem.Header>
+        </MenuItem>
+
 
         <MenuItem Tag="SettingsItem">
             <MenuItem.Header>
                 <DockPanel>
-                    <modern:FontIcon Glyph="{x:Static local:IconGlyphs.Settings}" FontSize="14" />
-                    <TextBlock Text="打开设置" Margin="15,0,0,0" />
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Settings}" FontSize="18" />
+                    <TextBlock Text="更多设置" FontSize="14" Margin="20,0,0,0" />
                 </DockPanel>
             </MenuItem.Header>
         </MenuItem>
@@ -34,14 +105,14 @@
         <MenuItem Tag="ExitItem">
             <MenuItem.Header>
                 <DockPanel>
-                    <modern:FontIcon Glyph="{x:Static local:IconGlyphs.Exit}" FontSize="14" />
-                    <TextBlock Text="退出" Margin="15,0,0,0" />
+                    <modern:FontIcon Width="24" Glyph="{x:Static local:IconGlyphs.Exit}" FontSize="18" />
+                    <TextBlock Text="退出" FontSize="14" Margin="20,0,0,0" />
                 </DockPanel>
             </MenuItem.Header>
         </MenuItem>
-        
+
     </ContextMenu>
-    
+
     <!-- 系统托盘图标载体 -->
     <tb:TaskbarIcon x:Key="TrayIcon"
                     ToolTipText="SnapActions"

@@ -42,9 +42,13 @@ public class RoadmapRegressionTests
     [Fact]
     public void TranslationLimitCountsUtf8Bytes()
     {
-        string text = new('ش', 300);
-        Assert.Equal(600, Encoding.UTF8.GetByteCount(text));
-        Assert.False(new TranslateAction().CanExecute(text, TextAnalysis.PlainText));
+        // 上限按 UTF-8 字节计（2000）：1000 个两字节字符正好 2000 字节，1001 个越界。
+        string within = new('ش', 1000);
+        Assert.Equal(2000, Encoding.UTF8.GetByteCount(within));
+        Assert.True(new TranslateAction().CanExecute(within, TextAnalysis.PlainText));
+        string over = new('ش', 1001);
+        Assert.Equal(2002, Encoding.UTF8.GetByteCount(over));
+        Assert.False(new TranslateAction().CanExecute(over, TextAnalysis.PlainText));
     }
 
     internal sealed class StubHandler(string body, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler

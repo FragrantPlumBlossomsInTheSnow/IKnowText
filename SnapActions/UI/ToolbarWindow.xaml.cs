@@ -129,18 +129,18 @@ public partial class ToolbarWindow : Window
         AlignPopupDirection(SubMenuPopup);
     }
     
-    /// <summary>把预览条宽度限制为子菜单动作按钮的 4 列总宽，悬停预览文本再长也不会撑宽弹层。
-    /// 单按钮宽按首行首按钮的实际宽度取（内容会把它撑得比 MinWidth 更宽），找不到时回退 90。</summary>
+    /// <summary>把预览条宽度限制为子菜单网格一行的宽度（列数 × 单按钮宽），悬停预览文本再长也不会撑宽弹层。
+    /// 单按钮宽按第一个动作按钮的实际宽度取（内容会把它撑得比 MinWidth 更宽），找不到时回退 90。</summary>
     private void ClampPreviewBandWidth()
     {
-        if (SubMenuPanel.Children.Count == 0) return;
+        Button? first = null;
+        foreach (var child in SubMenuPanel.Children)
+            if (child is Button button) { first = button; break; }
+        if (first == null) return;
         double unit = 90;
-        if (SubMenuPanel.Children[0] is FrameworkElement first)
-        {
-            var w = first.ActualWidth > 0 ? first.ActualWidth : first.DesiredSize.Width;
-            if (w > 0) unit = w;
-        }
-        PreviewBorder.MaxWidth = unit * 4;
+        var w = first.ActualWidth > 0 ? first.ActualWidth : first.DesiredSize.Width;
+        if (w > 0) unit = w;
+        PreviewBorder.MaxWidth = unit * SubMenuColumns;
     }
 
     /// <summary>翻译弹层弹出方向：根据屏幕剩余空间从工具栏下方或上方弹出，上方时把
@@ -481,13 +481,12 @@ public partial class ToolbarWindow : Window
     private void StartDismissTimer()
     {
         _dismissTimer.Stop();
-        if (_draggingAction != null || _activeActionMenu != null) return;
+        // 拖拽 / 右键菜单 / 子菜单编辑模式进行中都不自动收起。
+        if (_draggingAction != null || _activeActionMenu != null || _editMode) return;
         var timeout = SettingsManager.Current.ToolbarDismissTimeout;
-        if (timeout > 0)
-        {
-            _dismissTimer.Interval = TimeSpan.FromMilliseconds(timeout);
-            _dismissTimer.Start();
-        }
+        if (timeout <= 0) return;
+        _dismissTimer.Interval = TimeSpan.FromMilliseconds(timeout);
+        _dismissTimer.Start();
     }
 
     public void HideToolbar()
@@ -825,6 +824,8 @@ public partial class ToolbarWindow : Window
             // 右键菜单打开期间绝不关闭弹出层：菜单的 PlacementTarget 是弹出层里的按钮，
             // 关闭弹出层会把按钮摘出可视树，菜单失去宿主后留在屏幕上没人收。
             if (_activeActionMenu != null) return;
+            // 编辑模式下弹出层不再自动收起：用户要在这个列表里连续勾选/拖动。
+            if (_editMode) return;
             // 到点时如果鼠标还在按钮或 Popup 上，就放弃关闭
             if (SubMenuPopup.IsMouseOver) return;
             if (TransformButton.IsMouseOver || EncodeButton.IsMouseOver) return;

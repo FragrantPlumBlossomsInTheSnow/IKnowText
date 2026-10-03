@@ -8,10 +8,11 @@ public class BaiduTranslatorTests
     [Fact]
     public void SelectionLimitCountsUtf8Bytes()
     {
-        Assert.True(BaiduTranslator.CanTranslate(new string('a', 500)));
-        Assert.False(BaiduTranslator.CanTranslate(new string('a', 501)));
-        Assert.True(BaiduTranslator.CanTranslate(new string('ش', 250)));
-        Assert.False(BaiduTranslator.CanTranslate(new string('ش', 251)));
+        // 上限按 UTF-8 字节计（2000），不是字符数：ASCII 1 字节/字符，阿拉伯字母 2 字节/字符。
+        Assert.True(BaiduTranslator.CanTranslate(new string('a', 2000)));
+        Assert.False(BaiduTranslator.CanTranslate(new string('a', 2001)));
+        Assert.True(BaiduTranslator.CanTranslate(new string('ش', 1000)));
+        Assert.False(BaiduTranslator.CanTranslate(new string('ش', 1001)));
         Assert.False(BaiduTranslator.CanTranslate(" \r\n"));
     }
 

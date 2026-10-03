@@ -187,7 +187,7 @@
                 <Border Background="{DynamicResource ApplicationBackgroundBrush}"
                         BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="11" Padding="5"
-                        MinWidth="200" MaxWidth="450" MaxHeight="380">
+                        MinWidth="200" MaxWidth="600" MaxHeight="380">
                     <StackPanel>
                         <DockPanel x:Name="SubMenuHeader" Margin="6,4,2,6">
                             <Button x:Name="GearButton" Style="{StaticResource ActionButtonStyle}"
@@ -206,7 +206,8 @@
                         <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}"
                                 Margin="2,0,2,4" />
                         <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="170">
-                            <WrapPanel x:Name="SubMenuPanel" Orientation="Horizontal" MaxWidth="450" Margin="0,0,10,0" />
+                            <!-- 4 列自适应网格；列定义与条目由 ClearSubMenu/AddSubMenuItem 按 SubMenuColumns 重建 -->
+                            <Grid x:Name="SubMenuPanel" Margin="0,0,10,0" />
                         </ScrollViewer>
                         <Border x:Name="PreviewBorder"
                                 Background="{DynamicResource ApplicationBackgroundBrush}"

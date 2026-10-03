@@ -16,6 +16,7 @@ public static class IconGlyphs
     public const string Search   = "\uE721";   // Search
     public const string Settings = "\uE713";   // Gear / Settings
     public const string More     = "\uE712";   // More（三点）
+    public const string EnableActions = "\uE74C";  // EnableActions
 
     // 结果弹出/翻译卡 chrome
     public const string Close     = "\uE711";  // Close (X)
@@ -56,5 +57,7 @@ public static class IconGlyphs
     public const string Computer = "\uea6c";  // Computer
     public const string AutoStartEnable = "\ue8fb";  // AutoStartEnable
     public const string AutoStartDisable = "\ue711";  // AutoStartDisable
+    public const string ToggleOn = AutoStartEnable;   // 动作组启用态（与开机自启同形）
+    public const string ToggleOff = AutoStartDisable; // 动作组停用态
     public const string Exit = "\ue7e8";  // Exit
 }

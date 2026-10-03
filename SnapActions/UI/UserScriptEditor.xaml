@@ -10,6 +10,7 @@
          行为全在 UserScriptEditor.xaml.cs：Code_Changed / Sample_Changed 触发 Preview()，
          Trigger_Changed 刷新正则提示，保存前校验正则与试跑。 -->
     <ScrollViewer VerticalScrollBarVisibility="Visible">
+        
         <StackPanel Margin="20">
             <TextBlock Text="动作名称" Margin="0,0,0,6" />
             <TextBox x:Name="NameBox" Padding="8" MaxLength="80"

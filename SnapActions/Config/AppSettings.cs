@@ -194,10 +194,7 @@ public class AppSettings
     /// </summary>
     [System.Text.Json.Serialization.JsonConverter(typeof(PasteModeTriggerJsonConverter))]
     public PasteModeTrigger PasteModeTrigger { get; set; } = PasteModeTrigger.LongPress;
-    public List<string> ExcludedApps { get; set; } = [
-        "KeePass", "KeePassXC", "1Password", "Bitwarden", "Dashlane", "Enpass", "LastPass",
-        "RoboForm", "NordPass", "ProtonPass", "KeeperPasswordManager"
-    ];
+    public List<string> ExcludedApps { get; set; } = [];
     /// <summary>
     /// Tracks which "default ExcludedApps additions" generation this settings file has
     /// already absorbed. SettingsManager.MigrateExcludedAppsDefaults merges new entries
@@ -238,7 +235,7 @@ public class AppSettings
     public bool CaptureOnCtrlC { get; set; } = false;
 
     /// <summary>
-    /// Allow the synthetic-copy chord (Ctrl+Insert → Ctrl+C) as a *fallback* after UI Automation
+    /// Allow the synthetic-copy chord (Ctrl+Insert) as a *fallback* after UI Automation
     /// has failed to expose the selection (Java Swing IDEs, some Chromium content), at the cost of
     /// a brief clipboard mutation and a SendInput keystroke. UIA stays the primary path either way.
     /// Defaults to true to match v2.4.x behavior (fallback always engaged); only when the user
@@ -305,27 +302,7 @@ public class AppSettings
             UrlTemplate = "https://www.google.com/search?q={0}&lr=lang_{1}&hl={1}" },
         new() { Id = "bing", Name = "Bing", IsBuiltIn = true,
             UrlTemplate = "https://www.bing.com/search?q={0}&setlang={1}" },
-        new() { Id = "duckduckgo", Name = "DuckDuckGo", IsBuiltIn = true,
-            UrlTemplate = "https://duckduckgo.com/?q={0}", LangMode = LangMode.None, UseLanguageFilter = false },
-        new() { Id = "youtube", Name = "YouTube", IsBuiltIn = true,
-            UrlTemplate = "https://www.youtube.com/results?search_query={0}&hl={1}" },
-        new() { Id = "twitter", Name = "Twitter/X", IsBuiltIn = true,
-            UrlTemplate = "https://x.com/search?q={0}&f=top", LangMode = LangMode.Query },
-        new() { Id = "reddit", Name = "Reddit", IsBuiltIn = true,
-            UrlTemplate = "https://www.reddit.com/search/?q={0}", LangMode = LangMode.None, UseLanguageFilter = false },
-        new() { Id = "github", Name = "GitHub", IsBuiltIn = true,
-            UrlTemplate = "https://github.com/search?q={0}&type=code", LangMode = LangMode.None, UseLanguageFilter = false },
-        new() { Id = "stackoverflow", Name = "StackOverflow", IsBuiltIn = true,
-            UrlTemplate = "https://stackoverflow.com/search?q={0}", LangMode = LangMode.None, UseLanguageFilter = false },
-        new() { Id = "wikipedia", Name = "Wikipedia", IsBuiltIn = true,
-            UrlTemplate = "https://{1}.wikipedia.org/w/index.php?search={0}" },
-        new() { Id = "amazon", Name = "Amazon", IsBuiltIn = true, Enabled = false,
-            UrlTemplate = "https://www.amazon.com/s?k={0}", UseLanguageFilter = false },
-        new() { Id = "imdb", Name = "IMDb", IsBuiltIn = true, Enabled = false,
-            UrlTemplate = "https://www.imdb.com/find/?q={0}", UseLanguageFilter = false },
-        new() { Id = "npm", Name = "npm", IsBuiltIn = true, Enabled = false,
-            UrlTemplate = "https://www.npmjs.com/search?q={0}", UseLanguageFilter = false },
-        new() { Id = "nuget", Name = "NuGet", IsBuiltIn = true, Enabled = false,
-            UrlTemplate = "https://www.nuget.org/packages?q={0}", UseLanguageFilter = false },
+        new() { Id = "BiLiBiLi", Name = "BiliBili", IsBuiltIn = true,
+            UrlTemplate = "https://search.bilibili.com/all?keyword={0}" },
     ];
 }

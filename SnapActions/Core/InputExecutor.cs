@@ -11,19 +11,11 @@ internal static class InputExecutor
     private const ushort VK_CONTROL = 0x11;
     private const ushort VK_MENU = 0x12;    // Alt
     private const ushort VK_INSERT = 0x2D;  // Ctrl+Insert = Copy / Shift+Insert = Paste
-    private const ushort VK_C = 0x43;       // Ctrl+C = modern universal Copy
     private const ushort VK_DELETE = 0x2E;
     private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private static readonly KeyStroke[] ShiftInsertInputs = BuildExtendedInsertCombo(VK_SHIFT);
     private static readonly KeyStroke[] CtrlInsertInputs = BuildExtendedInsertCombo(VK_CONTROL);
-    private static readonly KeyStroke[] CtrlCInputs =
-    [
-        new(VK_CONTROL, KeyUp: false, Extended: false),
-        new(VK_C, KeyUp: false, Extended: false),
-        new(VK_C, KeyUp: true, Extended: false),
-        new(VK_CONTROL, KeyUp: true, Extended: false),
-    ];
     private static readonly KeyStroke[] DeleteInputs =
     [
         new(VK_DELETE, KeyUp: false, Extended: true),
@@ -195,17 +187,17 @@ internal static class InputExecutor
     }
 
     /// <summary>
-    /// Injects a synthetic copy chord (Ctrl+Insert, or Ctrl+C when <paramref name="useCtrlC"/>) into
-    /// the exact input target. This is the last-resort capture fallback for apps whose UI Automation
-    /// exposes no selectable text (Java Swing IDEs, some Chromium content). Because that fallback runs
+    /// Injects a synthetic copy chord (Ctrl+Insert) into the exact input target. This is the
+    /// last-resort capture fallback for apps whose UI Automation exposes no selectable text
+    /// (Java Swing IDEs, some Chromium content). Because that fallback runs
     /// precisely when UIA yields no selection, the target has no AutomationRuntimeId to identify —
     /// so unlike the paste/delete paths, this uses window-level identity (foreground + focused + pid +
     /// tid + clipboard-unchanged + modifiers-released). This matches the pre-v2.4.0 capture safety.
     /// </summary>
     internal static async Task<InputInjectionOutcome> TrySimulateCopyAsync(
-        SelectionOperation operation, ClipboardObservation? expectedClipboard, bool useCtrlC = false)
+        SelectionOperation operation, ClipboardObservation? expectedClipboard)
     {
-        var strokes = useCtrlC ? CtrlCInputs : CtrlInsertInputs;
+        var strokes = CtrlInsertInputs;
         var outcome = new InputInjectionOutcome(InputInjectionStatus.Rejected);
 
         if (!operation.IsCurrent)

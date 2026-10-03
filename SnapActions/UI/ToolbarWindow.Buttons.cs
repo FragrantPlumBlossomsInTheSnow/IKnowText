@@ -153,14 +153,14 @@ public partial class ToolbarWindow
         _editMode = false;
         _hoverPreviewMode = false;
 
-        SubMenuPanel.Children.Clear();
+        ClearSubMenu();
         ResetPreview();
         SubMenuTitle.Text = "更多操作";
         SubMenuHeader.Visibility = Visibility.Visible;
         CustomizationHint.Visibility = Visibility.Visible;
         GearButton.Visibility = Visibility.Collapsed; // no edit mode for the ad-hoc overflow list
         foreach (var a in actions)
-            SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+            AddSubMenuItem(CreateSubMenuButton(a, false));
         SubMenuPopup.IsOpen = true;
         StartDismissTimer();
     }
@@ -236,10 +236,55 @@ public partial class ToolbarWindow
         Config.SettingsManager.Save();
     }
 
+    // 子菜单动作区是 4 列自适应列宽的网格：条目按行优先填充，分组标题跨整行。
+    // 列定义在 ClearSubMenu 里按 SubMenuColumns 重建，列数只有这一个来源。
+    private const int SubMenuColumns = 4;
+    private int _subMenuCursor;
+
+    /// <summary>清空子菜单网格并重建列定义。</summary>
+    private void ClearSubMenu()
+    {
+        SubMenuPanel.Children.Clear();
+        SubMenuPanel.RowDefinitions.Clear();
+        SubMenuPanel.ColumnDefinitions.Clear();
+        for (var i = 0; i < SubMenuColumns; i++)
+            SubMenuPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _subMenuCursor = 0;
+    }
+
+    /// <summary>把一个条目放进网格的下一格；fullRow=true 时独占整行（分组标题用）。</summary>
+    private void AddSubMenuItem(UIElement element, bool fullRow = false)
+    {
+        if (fullRow)
+        {
+            // 标题独占整行：先把当前行剩下的格子空出来
+            var remainder = _subMenuCursor % SubMenuColumns;
+            if (remainder != 0) _subMenuCursor += SubMenuColumns - remainder;
+            SetSubMenuItemCell(element, _subMenuCursor / SubMenuColumns, 0, SubMenuColumns);
+            _subMenuCursor += SubMenuColumns;
+        }
+        else
+        {
+            SetSubMenuItemCell(element, _subMenuCursor / SubMenuColumns, _subMenuCursor % SubMenuColumns, 1);
+            _subMenuCursor++;
+        }
+        SubMenuPanel.Children.Add(element);
+    }
+
+    // Grid 的行必须真实存在，否则 Grid.Row 会被钳到 0（所有条目重叠在第一行）；行高随内容自适应。
+    private void SetSubMenuItemCell(UIElement element, int row, int column, int columnSpan)
+    {
+        while (SubMenuPanel.RowDefinitions.Count <= row)
+            SubMenuPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        Grid.SetColumnSpan(element, columnSpan);
+    }
+
     private Button CreateSubMenuButton(IAction action, bool isEditMode)
     {
         var pinned = Config.SettingsManager.Current.PinnedActionIds;
-        bool isPinned = pinned.Contains(action.Id);
+        // bool isPinned = pinned.Contains(action.Id);
 
         bool isOff = Config.ToolbarPreferences.IsHidden(Config.SettingsManager.Current, action);
 
@@ -247,7 +292,7 @@ public partial class ToolbarWindow
         {
             Tag = action,
             Width = double.NaN, MinWidth = isEditMode ? 60 : 90,
-            Padding = isEditMode ? new Thickness(6, 2, 6, 2) : new Thickness(6, 1, 6, 1),
+            Padding = new Thickness(6, 1, 6, 1),
             Margin = new Thickness(1),
             // 与备份一致：编辑模式用紧凑 ActionButtonStyle，普通列表用行式 PopoverItemStyle
             Style = isEditMode
@@ -267,12 +312,12 @@ public partial class ToolbarWindow
                 Width = 12, Height = 12, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 4, 0)
             });
             // Pin toggle — 照抄备份 Geometry（IconPin / IconPinOff，WarningBrush 表示已固定）
-            sp.Children.Add(new Path
-            {
-                Data = (Geometry)FindResource(isPinned ? "IconPin" : "IconPinOff"),
-                Fill = (Brush)FindResource(isPinned ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush"),
-                Width = 12, Height = 12, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 6, 0)
-            });
+            // sp.Children.Add(new Path
+            // {
+            //     Data = (Geometry)FindResource(isPinned ? "IconPin" : "IconPinOff"),
+            //     Fill = (Brush)FindResource(isPinned ? "SystemFillColorCautionBrush" : "TextFillColorSecondaryBrush"),
+            //     Width = 12, Height = 12, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 6, 0)
+            // });
         }
         else
         {
@@ -327,7 +372,6 @@ public partial class ToolbarWindow
         if (isEditMode)
         {
             btn.Click += ToggleActionButton_Click;
-            // btn.ToolTip = "拖动到图钉  |  单击以显示隐藏  |  右键单击以查看选项";
         }
         else { btn.Click += ActionButton_Click; btn.MouseEnter += SubMenuButton_MouseEnter; btn.MouseLeave += SubMenuButton_MouseLeave; }
         ConfigureActionButton(btn, action, isEditMode);

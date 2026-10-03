@@ -101,7 +101,7 @@ public partial class ToolbarWindow
 
         // Open popup in hover-preview mode: empty submenu panel, empty title row, no gear.
         _hoverPreviewMode = true;
-        SubMenuPanel.Children.Clear();
+        ClearSubMenu();
         SubMenuTitle.Text = "";
         SubMenuHeader.Visibility = Visibility.Collapsed;
         GearButton.Visibility = Visibility.Collapsed;
@@ -163,7 +163,7 @@ public partial class ToolbarWindow
         {
             // The user clicked an inline button (no submenu open). Open the submenu briefly so
             // the preview band — which lives inside it — is visible.
-            SubMenuPanel.Children.Clear();
+            ClearSubMenu();
             SubMenuTitle.Text = "";
             SubMenuHeader.Visibility = Visibility.Collapsed;
             GearButton.Visibility = Visibility.Collapsed;
@@ -184,7 +184,7 @@ public partial class ToolbarWindow
         // Make sure the popup is open so PreviewText is visible.
         if (!SubMenuPopup.IsOpen)
         {
-            SubMenuPanel.Children.Clear();
+            ClearSubMenu();
             SubMenuTitle.Text = "错误";
             SubMenuHeader.Visibility = Visibility.Visible;
             GearButton.Visibility = Visibility.Collapsed;

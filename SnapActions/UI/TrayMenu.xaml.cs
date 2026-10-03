@@ -1,28 +1,39 @@
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows;
 using H.NotifyIcon;
 using SnapActions.Config;
 using SnapActions.Helpers;
 using ContextMenu = System.Windows.Controls.ContextMenu;
+using ItemsControl = System.Windows.Controls.ItemsControl;
 using MenuItem = System.Windows.Controls.MenuItem;
-using FrameworkElement = System.Windows.FrameworkElement;
 
 namespace SnapActions.UI;
 
 /// <summary>
 ///     托盘图标与它的上下文菜单。菜单外观在 <c>UI/TrayMenu.xaml</c>（由 App.xaml 合并），行为都在这里：
-///     条目按 Tag 关联（enable / autostart / settings / exit），每次打开菜单都从设置同步勾选状态与状态行。
-///     托盘用的是 H.NotifyIcon 的 WPF <see cref="TaskbarIcon"/>，菜单是真正的 WPF <see cref="ContextMenu"/>，
+///     条目按 Tag 关联（5 个动作组开关 EnablePaste/Translate/Transform/Encode/SearchItem，
+///     以及 AutoStartItem / SettingsItem / ExitItem），每次打开菜单都从设置同步动作组的勾选字形；
+///     托盘用的是 H.NotifyIcon 的 WPF <see cref="TaskbarIcon" />，菜单是真正的 WPF <see cref="ContextMenu" />，
 ///     因此跟随应用主题与 WPF-UI 的 Fluent 菜单样式（旧的 WinForms ContextMenuStrip 只能吃系统样式）。
 /// </summary>
 public class TrayMenu : IDisposable
 {
-    private TaskbarIcon? _trayIcon;
-    private SettingsWindow? _settingsWindow;
+    // 托盘菜单顶层的 5 个动作组开关（与设置窗口「显示动作」页的复选框是同一批设置项）。
+    private static readonly (string Tag, Func<AppSettings, bool> Get, Action<AppSettings, bool> Set)[]
+        ActionGroupToggles =
+        [
+            ("EnablePasteItem", s => s.ShowPasteActions, (s, v) => s.ShowPasteActions = v),
+            ("EnableTranslateItem", s => s.ShowTranslateActions, (s, v) => s.ShowTranslateActions = v),
+            ("EnableTransformItem", s => s.ShowTransformActions, (s, v) => s.ShowTransformActions = v),
+            ("EnableEncodeItem", s => s.ShowEncodeActions, (s, v) => s.ShowEncodeActions = v),
+            ("EnableSearchItem", s => s.ShowSearchActions, (s, v) => s.ShowSearchActions = v)
+        ];
+
     private MenuItem? _autoStartItem;
-    private MenuItem? _settingsItem;
     private MenuItem? _exitItem;
+    private MenuItem? _settingsItem;
+    private SettingsWindow? _settingsWindow;
+    private TaskbarIcon? _trayIcon;
 
     public void Dispose()
     {
@@ -33,13 +44,26 @@ public class TrayMenu : IDisposable
     public void Initialize()
     {
         _trayIcon = (TaskbarIcon)Application.Current.FindResource("TrayIcon");
-        
+
         var menu = _trayIcon.ContextMenu;
         if (menu != null)
         {
             _autoStartItem = FindMenuItem(menu, "AutoStartItem");
             _settingsItem = FindMenuItem(menu, "SettingsItem");
             _exitItem = FindMenuItem(menu, "ExitItem");
+
+            // 动作组开关：点击翻转对应设置项并保存；菜单每次打开都重新同步勾选字形，
+            // 这样在设置窗口改过之后，托盘里的状态不会过期。
+            foreach (var toggle in ActionGroupToggles)
+                if (FindMenuItem(menu, toggle.Tag) is { } item)
+                    item.Click += (_, _) =>
+                    {
+                        toggle.Set(SettingsManager.Current, !toggle.Get(SettingsManager.Current));
+                        SettingsManager.Save();
+                        SyncActionGroupGlyphs();
+                    };
+            menu.Opened += (_, _) => SyncActionGroupGlyphs();
+            SyncActionGroupGlyphs();
         }
 
         if (_autoStartItem != null)
@@ -47,27 +71,37 @@ public class TrayMenu : IDisposable
             _autoStartItem.Click += (_, _) => SetAutoStart();
             SetAutoStartGlyph();
         }
-        
+
         if (_settingsItem != null)
             _settingsItem.Click += (_, _) => ShowSettings();
-        
+
         if (_exitItem != null)
             _exitItem.Click += (_, _) => Application.Current.Shutdown();
-
-        // Refresh check states from settings every time the tray menu opens so changes made via the
-        // Settings window don't leave the tray showing stale state.
 
         _trayIcon.Icon = CreateDefaultIcon();
         _trayIcon.TrayLeftMouseDown += (_, _) => ShowSettings();
         _trayIcon.ForceCreate();
     }
-    
-    private static MenuItem? FindMenuItem(ContextMenu menu, string tag)
+
+    // ContextMenu 与 MenuItem 都是 ItemsControl，找条目（含子菜单里的）复用同一个实现。
+    private static MenuItem? FindMenuItem(ItemsControl owner, string tag)
     {
-        foreach (var obj in menu.Items)
+        foreach (var obj in owner.Items)
             if (obj is MenuItem mi && (string?)mi.Tag == tag)
                 return mi;
         return null;
+    }
+
+    /// <summary>按设置刷新 5 个动作组开关的勾选字形。</summary>
+    private static void SyncActionGroupGlyphs()
+    {
+        var s = SettingsManager.Current;
+        var state = TrayIconState.Instance;
+        state.PasteGlyph = s.ShowPasteActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff;
+        state.TranslateGlyph = s.ShowTranslateActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff;
+        state.TransformGlyph = s.ShowTransformActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff;
+        state.EncodeDecodeGlyph = s.ShowEncodeActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff;
+        state.SearchGlyph = s.ShowSearchActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff;
     }
 
     private static void SetAutoStart()
@@ -76,7 +110,7 @@ public class TrayMenu : IDisposable
         SetAutoStartGlyph();
         SettingsManager.Save();
     }
-    
+
     private static void SetAutoStartGlyph()
     {
         TrayIconState.Instance.AutoStartGlyph = SettingsManager.Current.AutoStart
@@ -94,7 +128,7 @@ public class TrayMenu : IDisposable
 
         _settingsWindow = new SettingsWindow();
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        
+
         _settingsWindow.Show();
         _settingsWindow.Activate();
     }

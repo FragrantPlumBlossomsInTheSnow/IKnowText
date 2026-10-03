@@ -65,19 +65,24 @@ internal static class PackageSelfTest
                 checks.Add(theme + " Settings sections, search, and small-window render");
             }
 
-            // 托盘菜单：资源结构 + 「启用」勾选回写 + 状态行 + 深浅两套外观留档。
+            // 托盘菜单：资源结构 + 深浅两套外观留档。
             // 菜单是 H.NotifyIcon 的 WPF ContextMenu（外壳圆角/阴影自绘在 UI/TrayMenu.xaml，条目用 WPF-UI 的
             // ui:MenuItem），所以它跟随应用主题 —— 旧的 WinForms ContextMenuStrip 做不到这点。
+            // 注：5 个动作组开关（「启用动作」）取代了早期的「启用」勾选项与状态行，直接列在菜单顶层。
             var trayMenu = (System.Windows.Controls.ContextMenu)Application.Current.FindResource("TrayContextMenu");
             var trayResource = (H.NotifyIcon.TaskbarIcon)Application.Current.FindResource("TrayIcon");
             Require(ReferenceEquals(trayResource.ContextMenu, trayMenu), "Tray icon is not bound to the tray context menu");
-            foreach (string tag in new[] { "enable", "autostart", "settings", "exit" })
+            // 顶层：5 个动作组开关 + 开机自启 / 更多设置 / 退出（点击回写与字形同步见下面的断言）。
+            foreach (string tag in new[]
+            {
+                "EnablePasteItem", "EnableTranslateItem", "EnableTransformItem", "EnableEncodeItem", "EnableSearchItem",
+                "AutoStartItem", "SettingsItem", "ExitItem"
+            })
                 Require(trayMenu.Items.OfType<System.Windows.Controls.MenuItem>().Any(i => (string?)i.Tag == tag),
                     "Tray menu is missing item: " + tag);
-            var trayStatus = trayMenu.Items.OfType<TextBlock>().FirstOrDefault(t => (string?)t.Tag == "status");
-            Require(trayStatus != null, "Tray menu has no status header");
+            var enableSearchItem = trayMenu.Items.OfType<System.Windows.Controls.MenuItem>()
+                .First(i => (string?)i.Tag == "EnableSearchItem");
 
-            var savedTrayEnabled = SettingsManager.Current.Enabled;
             var savedTrayTheme = SettingsManager.Current.Theme;
             var trayManager = new TrayMenu();
             var trayHost = new Window
@@ -89,16 +94,21 @@ internal static class PackageSelfTest
             try
             {
                 trayManager.Initialize(); // 真建一次托盘图标：覆盖 H.NotifyIcon 的创建路径
-                var enableItem = trayMenu.Items.OfType<System.Windows.Controls.MenuItem>()
-                    .First(i => (string?)i.Tag == "enable");
-                // 打开菜单会先按设置同步勾选状态，用户点击才回写 —— 两步都要验证。
-                trayMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
-                Require(enableItem.IsChecked == savedTrayEnabled, "Tray '启用' checkbox did not sync from settings");
-                enableItem.IsChecked = !savedTrayEnabled; // 模拟点击 → Checked/Unchecked → 应写回设置
-                Require(SettingsManager.Current.Enabled == !savedTrayEnabled, "Tray '启用' toggle did not write settings");
-                trayMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
-                Require(trayStatus!.Text.Contains(SettingsManager.Current.Enabled ? "已启用" : "已暂停"),
-                    "Tray status header did not follow the enabled state");
+
+                // 「启用动作」开关：打开菜单同步勾选字形 → 点击回写设置 → 字形跟随。
+                bool savedSearchActions = SettingsManager.Current.ShowSearchActions;
+                try
+                {
+                    trayMenu.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.ContextMenu.OpenedEvent));
+                    Require(TrayIconState.Instance.SearchGlyph == (savedSearchActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff),
+                        "Enable-actions glyph did not sync from settings");
+                    enableSearchItem.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent));
+                    Require(SettingsManager.Current.ShowSearchActions == !savedSearchActions,
+                        "Enable-actions toggle did not write settings");
+                    Require(TrayIconState.Instance.SearchGlyph == (!savedSearchActions ? IconGlyphs.ToggleOn : IconGlyphs.ToggleOff),
+                        "Enable-actions glyph did not follow the toggle");
+                }
+                finally { SettingsManager.Current.ShowSearchActions = savedSearchActions; }
 
                 trayHost.Show();
                 foreach (string theme in new[] { "dark", "light" })
@@ -118,10 +128,9 @@ internal static class PackageSelfTest
                 trayMenu.IsOpen = false;
                 trayHost.Close();
                 trayManager.Dispose();
-                SettingsManager.Current.Enabled = savedTrayEnabled;
                 SettingsManager.Current.Theme = savedTrayTheme; ThemeManager.Apply();
             }
-            checks.Add("Tray menu (H.NotifyIcon + WPF-UI MenuItems): structure, toggle wiring, theme-following render");
+            checks.Add("Tray menu (H.NotifyIcon + WPF-UI MenuItems): structure, action-group toggles and theme-following render");
 
             // 设置-翻译-百度翻译：已无「保存百度凭据」按钮，输入框变化后必须由防抖自动落盘。
             var baiduSettings = new SettingsWindow();
@@ -215,7 +224,7 @@ internal static class PackageSelfTest
                 // Transform 子窗口：同一动作出现在转换子菜单里时同样带 JS 徽标。
                 typeof(ToolbarWindow).GetMethod("ShowSubMenu", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                     .Invoke(pinnedToolbar, ["Transform", ActionCategory.Transform]);
-                var subMenu = (WrapPanel)pinnedToolbar.FindName("SubMenuPanel");
+                var subMenu = (System.Windows.Controls.Panel)pinnedToolbar.FindName("SubMenuPanel");
                 var jsItem = subMenu.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "user_selftest_js");
                 Require(HasJsBadge(jsItem), "Transform submenu does not mark the JS script action");
                 RenderElement(subMenu, "toolbar-transform-submenu-js", 420, 320);
@@ -354,17 +363,14 @@ internal static class PackageSelfTest
                 ToolbarPreferences.Pin(SettingsManager.Current, delete, "case_upper");
                 ToolbarPreferences.SetHidden(SettingsManager.Current, delete, true);
                 FileStream? locked = null;
-                string? failedError = null;
                 try
                 {
                     if (failTempWrite) Directory.CreateDirectory(temp);
                     else locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
                     Require(!SettingsManager.Save(), "A blocked settings write reported success");
+                    // 保存失败只要求错误被记录下来（设置窗口的保存状态行会显示它）；工具栏提示条已改为
+                    // 固定的操作说明文案，不再回显保存错误，因此不再断言工具栏文本。
                     Require(SettingsManager.LastSaveError != null, "Failed settings save has no error");
-                    // 记下这条错误原文：成功重试后提示必须不再是它（不依赖提示文案的措辞/语言）。
-                    failedError = SettingsManager.LastSaveError;
-                    Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text == failedError,
-                        "Toolbar did not show the settings save error");
                     Require(File.ReadAllBytes(path).SequenceEqual(saved), "Failed save changed the last saved settings");
                     Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "ws_trim", "case_upper", "case_snake" }),
                         "Failed save lost the pending pin order");
@@ -385,7 +391,6 @@ internal static class PackageSelfTest
                 ToolbarPreferences.SetHidden(SettingsManager.Current, delete, true);
                 Require(SettingsManager.Save() && SettingsManager.LastSaveError == null, "Settings did not recover after the lock was removed");
                 Require(!File.Exists(temp), "Successful settings retry left a temporary file");
-                Require(((TextBlock)toolbar.FindName("CustomizationHint")).Text != failedError, "Successful retry left a stale toolbar error");
                 SettingsManager.Load();
                 Require(SettingsManager.Current.PinnedActionIds.SequenceEqual(new[] { "ws_trim", "case_upper", "case_snake" })
                     && SettingsManager.Current.DisabledActionIds.SequenceEqual(new[] { "case_snake", "ws_trim" }),
@@ -407,7 +412,7 @@ internal static class PackageSelfTest
         settings.EnableCustomActions = true;
         settings.UserActions = Enumerable.Range(0, 8).Select(i => new UserAction
         { Id = $"toolbar_test_{i}", Name = $"Suggestion {i + 1}", UrlTemplate = "https://example.com/?q={0}" }).ToList();
-        settings.PinnedActionIds = ["search_twitter", "search_google", "ws_trim", "case_snake"];
+        settings.PinnedActionIds = ["search_bing", "search_google", "ws_trim", "case_snake"];
         settings.ShowEncodeActions = false;
         var toolbar = new ToolbarWindow { Registry = registry };
         SetField(toolbar, "_selectedText", "one two");
@@ -468,10 +473,10 @@ internal static class PackageSelfTest
         }
         var upper = registry.GetAllActionsForCategory(ActionCategory.Transform).Single(a => a.Id == "case_upper");
         Drop(upper, "ws_trim");
-        Require(settings.PinnedActionIds.SequenceEqual(["search_twitter", "search_google", "case_upper", "ws_trim", "case_snake"]), "Drop did not pin at the chosen position");
+        Require(settings.PinnedActionIds.SequenceEqual(["search_bing", "search_google", "case_upper", "ws_trim", "case_snake"]), "Drop did not pin at the chosen position");
         Drop(upper, "case_snake", true);
         Require(settings.PinnedActionIds.Last() == upper.Id, "Right-half drop did not move after the target");
-        Drop(upper, "search_twitter");
+        Drop(upper, "search_bing");
         Require(settings.PinnedActionIds.First() == upper.Id, "Left-half drop did not move before the target");
 
         // 隐藏操作已并入编辑模式目录（不再有右键“隐藏操作”菜单项）：直接经
@@ -484,11 +489,11 @@ internal static class PackageSelfTest
         // 再点 GearButton 进入编辑模式，目录用 GetAllActionsForCategory 重建（含被隐藏的 case_upper）。
         ((Button)toolbar.FindName("TransformButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         ((Button)toolbar.FindName("GearButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var catalog = (WrapPanel)toolbar.FindName("SubMenuPanel");
+        var catalog = (System.Windows.Controls.Panel)toolbar.FindName("SubMenuPanel");
         var catalogPopup = (System.Windows.Controls.Primitives.Popup)toolbar.FindName("SubMenuPopup");
         var catalogContent = (FrameworkElement)catalogPopup.Child;
-        catalogContent.Measure(new Size(420, 400)); catalogContent.Arrange(new Rect(0, 0, 420, 400)); catalogContent.UpdateLayout();
-        var catalogBitmap = new RenderTargetBitmap(420, 400, 96, 96, PixelFormats.Pbgra32);
+        catalogContent.Measure(new Size(640, 420)); catalogContent.Arrange(new Rect(0, 0, 640, 420)); catalogContent.UpdateLayout();
+        var catalogBitmap = new RenderTargetBitmap(640, 420, 96, 96, PixelFormats.Pbgra32);
         catalogBitmap.Render(catalogContent);
         var catalogPng = new PngBitmapEncoder(); catalogPng.Frames.Add(BitmapFrame.Create(catalogBitmap));
         using (var image = File.Create(Path.Combine(RuntimePaths.DataDirectory, "toolbar-customization.png"))) catalogPng.Save(image);
@@ -531,7 +536,7 @@ internal static class PackageSelfTest
             menu.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Require(!popup.IsOpen, "Category toggle did not close the menu");
             menu.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            var upper = ((WrapPanel)toolbar.FindName("SubMenuPanel")).Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "case_upper");
+            var upper = ((System.Windows.Controls.Panel)toolbar.FindName("SubMenuPanel")).Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == "case_upper");
             Hover(upper, UIElement.MouseEnterEvent);
             Require(popup.IsOpen && preview.Visibility == Visibility.Visible && text.Opacity == 1,
                 $"Hover preview stayed hidden after closing and reopening a category: open={popup.IsOpen}, band={preview.Visibility}, opacity={text.Opacity}, enabled={upper.IsEnabled}, text={text.Text}");

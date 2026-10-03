@@ -99,8 +99,8 @@ public partial class SettingsWindow : FluentWindow
         HoverOpenCheck.IsChecked = s.HoverOpen;
         AutoStartCheck.IsChecked = s.AutoStart;
         // ReplaceSelectionCheck.IsChecked = s.ReplaceSelectionOnTransform;
-        RestoreClipboardCheck.IsChecked = s.RestoreClipboardAfterAction;
-        OnlineLookupsCheck.IsChecked = s.AllowOnlineLookups;
+        // RestoreClipboardCheck.IsChecked = s.RestoreClipboardAfterAction;
+        // OnlineLookupsCheck.IsChecked = s.AllowOnlineLookups;
         // CaptureOnMouseSelectionCheck.IsChecked = s.CaptureOnMouseSelection;
         CaptureOnCtrlCCheck.IsChecked = s.CaptureOnCtrlC;
         UseSyntheticKeys.IsChecked = s.UseSyntheticKeys;
@@ -453,8 +453,8 @@ public partial class SettingsWindow : FluentWindow
         s.SelectCopy = SelectCopyCheck.IsChecked == true;
         s.HoverOpen = HoverOpenCheck.IsChecked == true;
         // s.ReplaceSelectionOnTransform = ReplaceSelectionCheck.IsChecked == true;
-        s.RestoreClipboardAfterAction = RestoreClipboardCheck.IsChecked == true;
-        s.AllowOnlineLookups = OnlineLookupsCheck.IsChecked == true;
+        // s.RestoreClipboardAfterAction = RestoreClipboardCheck.IsChecked == true;
+        // s.AllowOnlineLookups = OnlineLookupsCheck.IsChecked == true;
         // s.CaptureOnMouseSelection = CaptureOnMouseSelectionCheck.IsChecked == true;
         s.CaptureOnCtrlC = CaptureOnCtrlCCheck.IsChecked == true;
         s.UseSyntheticKeys = UseSyntheticKeys.IsChecked == true;

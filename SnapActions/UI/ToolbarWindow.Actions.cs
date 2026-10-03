@@ -1,10 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Threading;
 using SnapActions.Actions;
+using SnapActions.Config;
 using SnapActions.Core;
-using SnapActions.Helpers;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 
 namespace SnapActions.UI;
 
@@ -17,7 +16,7 @@ public partial class ToolbarWindow
     private async void ActionButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: IAction action }) return;
-        int generation = _generation;
+        var generation = _generation;
         if (!TryStartToolbarAction(out var operation)) return;
         var selection = new SelectionSnapshot(_selectedText, _analysis, operation,
             _isEditable || _isPasteMode, _isPasteMode ? SelectionProviderKind.Clipboard : _selectionProvider,
@@ -29,6 +28,7 @@ public partial class ToolbarWindow
             await ShowFailureAndHide(result.Message ?? "无法完成该操作");
             return;
         }
+
         if (result.ResultText != null)
         {
             // Transfer this operation to the result preview; hiding its old view must not invalidate it.
@@ -40,11 +40,15 @@ public partial class ToolbarWindow
             ResultPopup.ShowActionResult(action.Name, result.ResultText, selection);
             return;
         }
+
         // 打开自带 UI 的动作（翻译弹层）保持工具栏可见；其余动作照常收起。
         if (!result.KeepToolbarOpen) HideToolbar();
     }
 
-    private static bool TrySetClipboardText(string text) => ActionRunner.TryCopy(text);
+    private static bool TrySetClipboardText(string text)
+    {
+        return ActionRunner.TryCopy(text);
+    }
 
     // ── Edit mode (gear toggle) ──────────────────────────────────
 
@@ -54,6 +58,10 @@ public partial class ToolbarWindow
         // there used to blank the popup because RebuildCurrentSubMenu can't rebuild those lists.
         if (_currentSubMenuCategory == null) return;
         _editMode = !_editMode;
+
+        CustomizationHint.Text = _editMode
+            ? "左键单击显示/隐藏，拖动操作到工具栏固定"
+            : "点击操作执行，拖动到工具栏固定，右键显示更多操作";
         RebuildCurrentSubMenu();
     }
 
@@ -61,9 +69,9 @@ public partial class ToolbarWindow
     {
         if (sender is not Button { Tag: IAction action }) return;
 
-        var settings = Config.SettingsManager.Current;
-        Config.ToolbarPreferences.SetHidden(settings, action, !Config.ToolbarPreferences.IsHidden(settings, action));
-        Config.SettingsManager.Save();
+        var settings = SettingsManager.Current;
+        ToolbarPreferences.SetHidden(settings, action, !ToolbarPreferences.IsHidden(settings, action));
+        SettingsManager.Save();
     }
 
     // ── Reorder (search engines / pinned actions) ────────────────
@@ -86,23 +94,24 @@ public partial class ToolbarWindow
     {
         if (action.Category == ActionCategory.Search)
         {
-            var engines = Config.SettingsManager.Current.SearchEngines;
+            var engines = SettingsManager.Current.SearchEngines;
             var engineId = action.Id.Replace("search_", "");
-            int idx = engines.FindIndex(e => e.Id == engineId);
-            int newIdx = idx + direction;
+            var idx = engines.FindIndex(e => e.Id == engineId);
+            var newIdx = idx + direction;
             if (idx < 0 || newIdx < 0 || newIdx >= engines.Count) return;
             (engines[idx], engines[newIdx]) = (engines[newIdx], engines[idx]);
         }
         else
         {
             // For non-search actions, reorder in PinnedActionIds if pinned
-            var pinned = Config.SettingsManager.Current.PinnedActionIds;
-            int idx = pinned.IndexOf(action.Id);
-            int newIdx = idx + direction;
+            var pinned = SettingsManager.Current.PinnedActionIds;
+            var idx = pinned.IndexOf(action.Id);
+            var newIdx = idx + direction;
             if (idx < 0 || newIdx < 0 || newIdx >= pinned.Count) return;
             (pinned[idx], pinned[newIdx]) = (pinned[newIdx], pinned[idx]);
         }
-        Config.SettingsManager.Save();
+
+        SettingsManager.Save();
     }
 
     // ── Sub-menu show/toggle ─────────────────────────────────────
@@ -110,7 +119,12 @@ public partial class ToolbarWindow
     private void ShowSubMenu(string groupName, ActionCategory category)
     {
         if (SubMenuPopup.IsOpen && _currentSubMenuGroup == groupName && !_hoverPreviewMode)
-        { SubMenuPopup.IsOpen = false; _editMode = false; ResetPreview(); return; }
+        {
+            SubMenuPopup.IsOpen = false;
+            _editMode = false;
+            ResetPreview();
+            return;
+        }
 
         _currentSubMenuGroup = groupName;
         _currentSubMenuCategory = category;
@@ -121,7 +135,7 @@ public partial class ToolbarWindow
 
     private void RebuildCurrentSubMenu()
     {
-        SubMenuPanel.Children.Clear();
+        ClearSubMenu();
         ResetPreview();
         SubMenuHeader.Visibility = Visibility.Visible;
         CustomizationHint.Visibility = Visibility.Visible;
@@ -134,13 +148,14 @@ public partial class ToolbarWindow
                 SubMenuTitle.Text = "所有操作 — 拖到工具栏固定，点击显示/隐藏";
                 foreach (var category in Enum.GetValues<ActionCategory>())
                 {
-                    SubMenuPanel.Children.Add(new TextBlock
+                    AddSubMenuItem(new TextBlock
                     {
                         Text = CategoryDisplayName(category), FontSize = 10, FontWeight = FontWeights.SemiBold,
-                        Foreground = (Brush)FindResource("SystemFillColorAttentionBrush"), Width = 370, Margin = new Thickness(8, 6, 8, 2)
-                    });
+                        Foreground = (Brush)FindResource("SystemFillColorAttentionBrush"),
+                        Margin = new Thickness(8, 6, 8, 2)
+                    }, true);
                     foreach (var action in Registry.GetAllActionsForCategory(category))
-                        SubMenuPanel.Children.Add(CreateSubMenuButton(action, true));
+                        AddSubMenuItem(CreateSubMenuButton(action, true));
                 }
 
                 break;
@@ -148,7 +163,7 @@ public partial class ToolbarWindow
             case "More actions" when MoreButton.Tag is List<IAction> overflow:
             {
                 SubMenuTitle.Text = "更多操作";
-                foreach (var action in overflow) SubMenuPanel.Children.Add(CreateSubMenuButton(action, false));
+                foreach (var action in overflow) AddSubMenuItem(CreateSubMenuButton(action, false));
                 break;
             }
             default:
@@ -157,15 +172,20 @@ public partial class ToolbarWindow
                 {
                     SubMenuTitle.Text = $"{GroupDisplayName(_currentSubMenuGroup)}（编辑中）";
                     foreach (var a in Registry.GetAllActionsForCategory(_currentSubMenuCategory.Value))
-                        SubMenuPanel.Children.Add(CreateSubMenuButton(a, true));
+                        AddSubMenuItem(CreateSubMenuButton(a, true));
                 }
                 else
                 {
                     SubMenuTitle.Text = GroupDisplayName(_currentSubMenuGroup) ?? "";
                     var g = _actionGroups.FirstOrDefault(g => g.Name == _currentSubMenuGroup);
-                    if (g == null) { SubMenuPopup.IsOpen = false; return; }
+                    if (g == null)
+                    {
+                        SubMenuPopup.IsOpen = false;
+                        return;
+                    }
+
                     foreach (var a in g.Actions)
-                        SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+                        AddSubMenuItem(CreateSubMenuButton(a, false));
                 }
 
                 break;
@@ -179,39 +199,45 @@ public partial class ToolbarWindow
 
     // Group names / category labels are internal identifiers used in == comparisons, so the
     // submenu titles get translated here at display time instead of in the identifiers.
-    private static string? GroupDisplayName(string? name) => name switch
+    private static string? GroupDisplayName(string? name)
     {
-        "Transform" => "文本转换",
-        "Encode" => "编码/解码",
-        "Search" => "搜索",
-        "All actions" => "所有操作",
-        "More actions" => "更多操作",
-        "Paste As" => "粘贴为",
-        _ => name,
-    };
+        return name switch
+        {
+            "Transform" => "文本转换",
+            "Encode" => "编码/解码",
+            "Search" => "搜索",
+            "All actions" => "所有操作",
+            "More actions" => "更多操作",
+            "Paste As" => "粘贴为",
+            _ => name
+        };
+    }
 
-    private static string CategoryDisplayName(ActionCategory category) => category switch
+    private static string CategoryDisplayName(ActionCategory category)
     {
-        ActionCategory.Context => "上下文",
-        ActionCategory.Transform => "转换",
-        ActionCategory.Search => "搜索",
-        ActionCategory.Encode => "编码",
-        _ => category.ToString(),
-    };
+        return category switch
+        {
+            ActionCategory.Context => "上下文",
+            ActionCategory.Transform => "转换",
+            ActionCategory.Search => "搜索",
+            ActionCategory.Encode => "编码",
+            _ => category.ToString()
+        };
+    }
 
     // ── Paste As sub-menu (paste mode) ───────────────────────────
 
     // Re-opens the menu if the user closed it and hovers the paste button again.
-    private void PasteButton_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    private void PasteButton_MouseEnter(object sender, MouseEventArgs e)
     {
         if (!_isPasteMode || string.IsNullOrEmpty(_selectedText)) return;
         ShowPasteAsMenu();
     }
 
     /// <summary>
-    /// Builds and opens the "Paste As" submenu (transforms + encodes applied to the clipboard
-    /// text). Opened immediately when paste mode shows — it's paste mode's only content, and
-    /// when hovering the bare V button was the sole way in, nothing hinted the options existed.
+    ///     Builds and opens the "Paste As" submenu (transforms + encodes applied to the clipboard
+    ///     text). Opened immediately when paste mode shows — it's paste mode's only content, and
+    ///     when hovering the bare V button was the sole way in, nothing hinted the options existed.
     /// </summary>
     private void ShowPasteAsMenu()
     {
@@ -221,7 +247,7 @@ public partial class ToolbarWindow
         _editMode = false;
         _hoverPreviewMode = false;
 
-        SubMenuPanel.Children.Clear();
+        ClearSubMenu();
         ResetPreview();
         SubMenuTitle.Text = "粘贴为";
         SubMenuHeader.Visibility = Visibility.Visible;
@@ -235,16 +261,16 @@ public partial class ToolbarWindow
             var transforms = applicable.Where(a => a.Category == ActionCategory.Transform).ToList();
             var encodes = applicable.Where(a => a.Category == ActionCategory.Encode).ToList();
 
-            foreach (var a in transforms) SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+            foreach (var a in transforms) AddSubMenuItem(CreateSubMenuButton(a, false));
             if (encodes.Count > 0)
             {
-                SubMenuPanel.Children.Add(new TextBlock
+                AddSubMenuItem(new TextBlock
                 {
                     Text = "Encode", FontSize = 10, FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)FindResource("SystemFillColorAttentionBrush"),
-                    Margin = new Thickness(8, 6, 8, 2), Width = 380
-                });
-                foreach (var a in encodes) SubMenuPanel.Children.Add(CreateSubMenuButton(a, false));
+                    Margin = new Thickness(8, 6, 8, 2)
+                }, true);
+                foreach (var a in encodes) AddSubMenuItem(CreateSubMenuButton(a, false));
             }
         }
 
