@@ -4,6 +4,7 @@ using Xunit;
 
 namespace SnapActions.Tests;
 
+[Collection("settings-singleton")]
 public class ToolbarPreferencesTests
 {
     private static IAction Action(string id) => new ActionRegistry()

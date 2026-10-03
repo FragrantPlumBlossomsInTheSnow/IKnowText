@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+﻿﻿﻿using System.Collections.Generic;
 using System.Linq;
 using SnapActions.Actions;
 using SnapActions.Actions.UserActions;
@@ -8,7 +8,7 @@ using Xunit;
 
 namespace SnapActions.Tests;
 
-[Collection("Sequential")] // Ensure tests run sequentially to avoid conflicts with shared settings
+[Collection("settings-singleton")]
 public class UserActionTests
 {
     // ── User recipe actions (data-driven custom actions) ─────────

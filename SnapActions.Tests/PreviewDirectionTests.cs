@@ -37,7 +37,7 @@ public class PreviewDirectionTests
     }
 
     [Fact]
-    public void SearchPreview_UsesBrowserDirectionEvenWhenSelectionStartsWithEnglish()
+    public void SearchPreview_UsesSelectionDirectionEvenWhenSelectionStartsWithEnglish()
     {
         OnSta(() =>
         {

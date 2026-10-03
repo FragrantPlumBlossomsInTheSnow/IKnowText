@@ -14,7 +14,6 @@ public class SelectionTracker
     private readonly TextClassifier _classifier;
     private readonly ActionRegistry _actionRegistry;
     private readonly SelectionOperationSource _operations = new();
-    private readonly BrowserSelectionBridge _browser = new();
     private ToolbarWindow? _toolbar;
     private readonly SelectionCoordinator _coordinator;
     // TickCount64 is monotonic — wall-clock jumps (NTP sync, hibernation resume, manual time
@@ -48,7 +47,7 @@ public class SelectionTracker
 
     public SelectionTracker()
     {
-        _coordinator = new SelectionCoordinator(_browser);
+        _coordinator = new SelectionCoordinator();
         _mouseHook = new MouseHook();
         _classifier = new TextClassifier();
         _actionRegistry = new ActionRegistry();
@@ -62,7 +61,6 @@ public class SelectionTracker
 
     public void Start()
     {
-        _browser.Start();
         _mouseHook.Install();
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
@@ -75,7 +73,6 @@ public class SelectionTracker
     public void Stop()
     {
         _operations.Invalidate();
-        _browser.Dispose();
         KeyboardHook.CtrlCPressed -= OnCtrlCPressed;
         KeyboardHook.PhysicalCtrlInsertPressed -= OnPhysicalCtrlInsertPressed;
         KeyboardHook.EscPressed -= OnEscPressed;
@@ -240,8 +237,9 @@ public class SelectionTracker
     ///         eligible (see CursorShape.DecideCaptureAggressiveness).</item>
     ///   <item>This method's pre-checks: self-PID, debounce, Enabled, IsPointInside (toolbar
     ///         self-click), ExcludedApps.</item>
-    ///   <item>Browser selection bridge, or the UI Automation selection read. Automatic mouse capture never
-    ///         sends WM_COPY or Ctrl+Insert and never reads or mutates the clipboard. Empty
+    ///   <item>The UI Automation selection read (with a synthetic Ctrl+Insert fallback when UIA yields
+    ///         nothing). Automatic mouse capture never sends WM_COPY; the fallback snapshots and
+    ///         restores the clipboard around its injected keystroke. Empty
     ///         captured text aborts here — except when the trigger was a
     ///         multi-click AND <see cref="PasteModeTrigger.DoubleClick"/> is configured, in
     ///         which case empty text falls through to paste mode if the cursor is over an

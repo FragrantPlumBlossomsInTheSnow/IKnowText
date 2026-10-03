@@ -7,6 +7,7 @@ using Xunit;
 
 namespace SnapActions.Tests;
 
+[Collection("settings-singleton")]
 public class ResultPopupTests
 {
     [Theory]

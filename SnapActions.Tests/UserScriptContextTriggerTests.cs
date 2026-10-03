@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+﻿﻿﻿using System.Collections.Generic;
 using System.Linq;
 using SnapActions.Actions;
 using SnapActions.Actions.UserActions;
@@ -13,7 +13,7 @@ namespace SnapActions.Tests;
 /// Context 组 —— 也就是工具栏 ContextSeparator 后面那排内联按钮；未命中/非法正则/动作停用时都不能触发。
 /// 触发时它仍留在 Transform 组里，转换子菜单与固定区行为不变。
 /// </summary>
-[Collection("SettingsManager collection")]
+[Collection("settings-singleton")]
 public class UserScriptContextTriggerTests
 {
     private const string Js = "function JSAction(t) { return t; }";

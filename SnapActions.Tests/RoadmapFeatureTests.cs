@@ -12,6 +12,7 @@ using Xunit;
 
 namespace SnapActions.Tests;
 
+[Collection("settings-singleton")]
 public class RoadmapFeatureTests
 {
     [Theory]
@@ -94,17 +95,6 @@ public class RoadmapFeatureTests
         Assert.Equal(UiaSelectionProvider.SelectionProbeOutcome.UntrustedText,
             UiaSelectionProvider.ClassifyUiaSelection(combined, false).Outcome);
         Assert.Equal("one\ntwo", UiaSelectionProvider.CombineSelectionRanges(["one", "", "two"]));
-    }
-
-    [Theory]
-    [InlineData("null")]
-    [InlineData("\"1\"")]
-    [InlineData("2")]
-    [InlineData("true")]
-    public void BrowserProtocolRejectsIncompatibleVersions(string version)
-    {
-        using var json = JsonDocument.Parse("{\"version\":" + version + ",\"status\":\"ok\",\"text\":\"text\",\"identity\":\"range\"}");
-        Assert.Null(BrowserSelectionBridge.ParseSelection(json.RootElement));
     }
 
     [Fact]

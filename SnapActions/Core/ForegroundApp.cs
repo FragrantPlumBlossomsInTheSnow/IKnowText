@@ -108,8 +108,8 @@ public static class ForegroundApp
     /// True when the foreground app is Explorer / the desktop / a known file manager — a shell
     /// item container where a synthetic Ctrl+Insert would copy FILES (CF_HDROP), not text, and
     /// could silently downgrade a pending Ctrl+X cut to a copy on the clipboard restore. Used to
-    /// withhold the ambiguous-cursor drag keystroke there; the browser-feed selection fix it exists
-    /// for never targets these apps. (Same process set as the double-click paste-mode reject.)
+    /// withhold the ambiguous-cursor drag keystroke there; automatic selection capture never targets
+    /// these apps. (Same process set as the double-click paste-mode reject.)
     /// </summary>
     public static bool IsFileManagerFocused()
     {

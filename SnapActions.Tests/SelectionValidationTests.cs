@@ -53,7 +53,32 @@ public class SelectionValidationTests
     }
 
     [Fact]
-    public void RebindingTargetAndBrowserValidation_PreservesNativeInputEvidence()
+    public async Task SelectionValidation_RejectsChangedSelectionAndSurvivesTargetBinding()
+    {
+        // Provider-side selection validation (was the browser companion's re-read; the hook stays
+        // generic and is still exercised by the explicit-copy and retry gates).
+        var source = new SelectionOperationSource();
+        bool selected = true;
+        var operation = source.Begin(default).WithSelectionValidation(() => Task.FromResult(selected));
+        Assert.True(await operation.WithTarget(default).CanUseSelectionAsync());
+        selected = false;
+        Assert.False(await operation.WithTarget(default).CanUseSelectionAsync());
+    }
+
+    [Fact]
+    public async Task SelectionValidation_NewerOperationWinsWhileReplyIsPending()
+    {
+        var source = new SelectionOperationSource();
+        var completion = new TaskCompletionSource<bool>();
+        var operation = source.Begin(default).WithSelectionValidation(() => completion.Task);
+        var pending = operation.CanUseSelectionAsync();
+        source.Begin(default);
+        completion.SetResult(true);
+        Assert.False(await pending);
+    }
+
+    [Fact]
+    public void RebindingTargetAndSelectionValidation_PreservesNativeInputEvidence()
     {
         var operation = new SelectionOperationSource().Begin(default).WithInputValidation(() => false)
             .WithTarget(new ForegroundTarget((nint)1, (nint)2, 3, 4, "control"))

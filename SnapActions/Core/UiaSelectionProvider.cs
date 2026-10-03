@@ -32,7 +32,7 @@ internal static class UiaSelectionProvider
         SelectionOperation operation, SelectionGesture gesture, int cursorX, int cursorY)
     {
         CaptureResult Result(string? text) => new(
-            text?.Length <= BrowserMessage.MaximumTextLength ? text : null, operation);
+            text?.Length <= SelectionSnapshot.MaximumTextLength ? text : null, operation);
         await CaptureLock.WaitAsync();
         try
         {
@@ -123,9 +123,9 @@ internal static class UiaSelectionProvider
     {
         try
         {
-            if (ranges.Length is 0 or > 256 || expectedText.Length > BrowserMessage.MaximumTextLength) return null;
+            if (ranges.Length is 0 or > 256 || expectedText.Length > SelectionSnapshot.MaximumTextLength) return null;
             var captured = ranges.Select(range => range.Clone()).ToArray();
-            var text = captured.Select(range => range.GetText(BrowserMessage.MaximumTextLength + 1)).ToArray();
+            var text = captured.Select(range => range.GetText(SelectionSnapshot.MaximumTextLength + 1)).ToArray();
             // Geometry may rescue Chromium display text even when UIA reports an adjacent range.
             // Such a capture remains useful for Copy but cannot authorize an edit of that range.
             if (CombineSelectionRanges(text) != expectedText) return null;
@@ -137,7 +137,7 @@ internal static class UiaSelectionProvider
                 for (int i = 0; i < captured.Length; i++)
                     if (captured[i].CompareEndpoints(TextPatternRangeEndpoint.Start, current[i], TextPatternRangeEndpoint.Start) != 0
                         || captured[i].CompareEndpoints(TextPatternRangeEndpoint.End, current[i], TextPatternRangeEndpoint.End) != 0
-                        || current[i].GetText(BrowserMessage.MaximumTextLength + 1) != text[i])
+                        || current[i].GetText(SelectionSnapshot.MaximumTextLength + 1) != text[i])
                         return false;
                 return true;
             };
@@ -221,7 +221,7 @@ internal static class UiaSelectionProvider
         bool requireGestureText = false,
         bool acceptGestureLengthMismatch = false)
     {
-        if (text.Length > BrowserMessage.MaximumTextLength || gestureText?.Length > BrowserMessage.MaximumTextLength)
+        if (text.Length > SelectionSnapshot.MaximumTextLength || gestureText?.Length > SelectionSnapshot.MaximumTextLength)
             return new SelectionProbe(SelectionProbeOutcome.UntrustedText, null, "Selection is too large", automationRuntimeId);
         if ((fromCursorPoint && !acceptCursorPointText) || preferExactCopy)
         {
@@ -325,7 +325,7 @@ internal static class UiaSelectionProvider
                         var ranges = tp.GetSelection();
                         if (ranges != null && ranges.Length > 0)
                         {
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(BrowserMessage.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
                                 // 沿用旧版（v2.4.5 备份 TextCapture.cs）：不强制 Chromium 手势文本。
@@ -459,7 +459,7 @@ internal static class UiaSelectionProvider
             range.ExpandToEnclosingUnit(TextUnit.Word);
             if (!IsRangeWithinDocument(range, textPattern.DocumentRange)) return null;
 
-            var text = range.GetText(BrowserMessage.MaximumTextLength + 1);
+            var text = range.GetText(SelectionSnapshot.MaximumTextLength + 1);
             if (text.Length > selectedText.Length)
             {
                 var withoutTrailingWhitespace = text.TrimEnd();
@@ -545,7 +545,7 @@ internal static class UiaSelectionProvider
                     TextPatternRangeEndpoint.End);
             }
 
-            var characterText = character.GetText(BrowserMessage.MaximumTextLength + 1);
+            var characterText = character.GetText(SelectionSnapshot.MaximumTextLength + 1);
             if (characterText.Length == 0) return null;
             int characterStart = visualText.Length;
             visualText.Append(characterText);
@@ -596,7 +596,7 @@ internal static class UiaSelectionProvider
         string selectedText, TextPatternRange[] selectedRanges)
     {
         if (selectedRanges.Length != 1 || string.IsNullOrWhiteSpace(selectedText)
-            || selectedText.Length > BrowserMessage.MaximumTextLength) return null;
+            || selectedText.Length > SelectionSnapshot.MaximumTextLength) return null;
         var selected = selectedRanges[0].Clone();
         if (!IsRangeWithinDocument(selected, document)) return null;
         int lineOrder = anchorLine.CompareEndpoints(TextPatternRangeEndpoint.Start,
@@ -623,13 +623,13 @@ internal static class UiaSelectionProvider
         // UIA work may race an app render or a newer selection. Never accept geometry for stale text.
         var current = pattern.GetSelection();
         if (current.Length != 1 || !selected.Compare(current[0])
-            || current[0].GetText(BrowserMessage.MaximumTextLength + 1) != selectedText) return null;
+            || current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) != selectedText) return null;
 
         var enclosing = selected.GetEnclosingElement();
         if (enclosing.Current.ControlType != System.Windows.Automation.ControlType.Text)
             return ContainsRtlScript(selectedText) ? null : selectedText;
         string logicalName = enclosing.Current.Name;
-        if (logicalName.Length > BrowserMessage.MaximumTextLength) return null;
+        if (logicalName.Length > SelectionSnapshot.MaximumTextLength) return null;
         if (logicalName.Contains(selectedText, StringComparison.Ordinal)) return selectedText;
 
         // Chromium can expose an RTL line break before its text, despite the Text element's
@@ -649,7 +649,7 @@ internal static class UiaSelectionProvider
         if (logicalText == null || enclosing.Current.Name != logicalName) return null;
         current = pattern.GetSelection();
         return current.Length == 1 && selected.Compare(current[0])
-            && current[0].GetText(BrowserMessage.MaximumTextLength + 1) == selectedText ? logicalText : null;
+            && current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) == selectedText ? logicalText : null;
     }
 
     private static bool ContainsRtlScript(string text) => text.Any(character =>
@@ -688,7 +688,7 @@ internal static class UiaSelectionProvider
     {
         var result = new List<LogicalLineSelection>();
         if (visualLine.Length is 0 or > ChromiumGeometryLineLimit || selected.Start < 0 || selected.Length <= 0
-            || selected.End > visualLine.Length || logicalName.Length > BrowserMessage.MaximumTextLength) return result;
+            || selected.End > visualLine.Length || logicalName.Length > SelectionSnapshot.MaximumTextLength) return result;
         for (int rotation = 0; rotation < visualLine.Length; rotation++)
         {
             int selectedStart = selected.Length == visualLine.Length ? 0
@@ -895,7 +895,7 @@ internal static class UiaSelectionProvider
                         var ranges = ((TextPattern)pat).GetSelection();
                         if (ranges != null && ranges.Length > 0)
                         {
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(BrowserMessage.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
                                 // 沿用旧版：光标点路径同样不强制 Chromium 手势文本（原因同上，
@@ -948,7 +948,7 @@ internal static class UiaSelectionProvider
                             // Range reads are bounded before their result reaches the coordinator. For
                             // discontiguous selections (rare — Ctrl-click in Excel-style
                             // grids) join with \n so the caller sees all of it.
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(BrowserMessage.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (allowEmpty || !string.IsNullOrEmpty(combined))
                                 return new SelectionProbe(SelectionProbeOutcome.HasText, combined, null, focusedRuntimeId,
                                     CreateInputValidation(tp, ranges, combined));
@@ -995,8 +995,8 @@ internal static class UiaSelectionProvider
         int count = 0;
         foreach (var fragment in fragments)
         {
-            if (++count > 256 || result.Length + fragment.Length + (result.Length > 0 ? 1 : 0) > BrowserMessage.MaximumTextLength)
-                return new string('\0', BrowserMessage.MaximumTextLength + 1);
+            if (++count > 256 || result.Length + fragment.Length + (result.Length > 0 ? 1 : 0) > SelectionSnapshot.MaximumTextLength)
+                return new string('\0', SelectionSnapshot.MaximumTextLength + 1);
             if (fragment.Length == 0) continue;
             if (result.Length > 0) result.Append('\n');
             result.Append(fragment);

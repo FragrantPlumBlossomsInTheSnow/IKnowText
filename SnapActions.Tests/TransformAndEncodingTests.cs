@@ -9,6 +9,7 @@ namespace SnapActions.Tests;
 /// directly — this exercises the same wiring the toolbar uses, including ID and category
 /// assignment.
 /// </summary>
+[Collection("settings-singleton")]
 public class TransformAndEncodingTests
 {
     private readonly ActionRegistry _registry = new();

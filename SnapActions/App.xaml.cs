@@ -17,15 +17,6 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
-        if (e.Args.Length > 0 && e.Args[0].StartsWith("chrome-extension://", StringComparison.Ordinal))
-        {
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            if (e.Args[0] == BrowserNativeHost.ExtensionOrigin)
-                await BrowserNativeHost.RunAsync();
-            Shutdown();
-            return;
-        }
-
         if (e.Args is ["--self-test"])
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

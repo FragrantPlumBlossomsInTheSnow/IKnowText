@@ -1,10 +1,10 @@
-﻿using SnapActions.Actions;
+﻿﻿﻿using SnapActions.Actions;
 using SnapActions.Config;
 using Xunit;
 
 namespace SnapActions.Tests;
 
-[Collection("RegistryTests")]
+[Collection("settings-singleton")]
 public class ActionRegistryTests
 {
     [Fact]

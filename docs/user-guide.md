@@ -2,12 +2,13 @@
 
 [Back to the overview](../README.md)
 
-This reference covers everyday actions, settings, compatibility and development.
+This reference covers everyday actions, settings, compatibility and development. The interface is in Chinese: on-screen labels are quoted as they appear, with an English gloss where it helps.
 
-- [Use the toolbar and keyboard palette](#use)
+- [Use the toolbar](#use)
 - [Supported text and actions](#what-it-detects)
 - [Inline lookups](#inline-popups)
 - [Customize and configure](#customize)
+- [JavaScript script actions](#javascript-script-actions)
 - [Privacy](#privacy)
 - [Capture behavior and compatibility](#how-it-works)
 - [Build and test](#build-from-source)
@@ -17,26 +18,24 @@ This reference covers everyday actions, settings, compatibility and development.
 Select text anywhere — drag-select, double-click a word, triple-click a line. A floating toolbar appears above the cursor with actions tailored to what you picked.
 
 ```
-Select  youtube.com                   →  Open URL, search
+Select  youtube.com                   →  Open URL, clean tracking links, search
 Select  2+3*4                         →  Calculate (= 14)
 Select  5 ft                          →  Convert (1.524 m | 60 in | 1.667 yd | …)
 Select  #89B4FA                       →  Preview color (with swatch), cycle to rgb/hsl
 Select  eyJhbGciOiJI...               →  Decode JWT header/payload
 Select  {"a":1,"b":2}                 →  Format / Minify JSON
-Select  a sentence                    →  Translate, Dictionary, Search
+Select  a sentence                    →  Translate, Search
 ```
 
-**Hover any toolbar button to see the result before clicking.** Color hovers show a live swatch alongside the text.
+**Hover any toolbar button to see the result before clicking.** Preview text is computed only for pure actions — local transforms, encoders, formatting, calculation, color/unit/time conversion and link cleaning, on selections up to 4 KB — and for search engines, which preview the query they would open. Color hovers show a live swatch alongside the text.
 
-Transforms open a result preview with **Copy result** and, for a verified editable target, **Replace selection**. They also work on read-only selections. The source excerpt stays beside the result; replacement revalidates the original target before input. Native Delete, Paste and Replace require writable capability plus the same captured selection endpoints and text. When a provider cannot supply that evidence, captured text remains available for Copy. To bring up a paste menu without an existing selection, **long-press** the left mouse button (500 ms by default) inside any text input — or switch the trigger to double-click (on an empty editable field), or off, in Settings.
+Clicking an action that produces text opens a result popup with **复制结果** (Copy result) and **替换原文** (Replace original). Copy revalidates the captured selection before it writes to the clipboard. Replace snapshots the clipboard, re-checks that the original target is still focused, and injects a paste over the selection; a busy clipboard, a moved focus or an uncertain target cancels the replacement and leaves a retry available. The source excerpt stays beside the result, and when the target application refuses a replacement, **Copy result** still completes the job.
 
-A busy clipboard leaves **Copy result** available for a safe retry. A cancelled or uncertain replacement requires a fresh selection. If every matching action is hidden, the toolbar still offers Copy and the customization menu.
+Automatic highlight capture is clipboard-free and is on by default. Selections are read from the focused element's accessibility tree, with a Chromium geometry fallback for same-line drags; only when that yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, restoring the previous clipboard afterwards. For unsupported surfaces, turn on **按 Ctrl+C 时显示工具栏** (Show the toolbar when I press Ctrl+C) and copy explicitly to summon the toolbar there.
 
-Automatic highlight capture is clipboard-free: leave **Show toolbar automatically when I select text** on. Selections are read from the focused element's accessibility tree, with a Chromium geometry fallback for same-line drags; only when that yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, restoring the previous clipboard afterwards. For unsupported surfaces, turn on **Show toolbar when I press Ctrl+C** and copy explicitly to summon the toolbar there.
+To bring up a paste menu without an existing selection, **long-press** the left mouse button (500 ms by default) inside any text input. The **粘贴为** (Paste as) menu applies transforms and encoders to the clipboard text and pastes the result back. The trigger itself is a setting (`pasteModeTrigger`: long-press, double-click on an empty editable field, or off) that the Settings window does not currently expose.
 
-Press **Ctrl+Shift+Space** for the searchable action palette. Use Up/Down to choose, Enter to run, and Esc to close. Pure actions preview their result before Copy or Replace. If no selection is readable, enter text in the palette. An unavailable shortcut is written to the log file.
-
-Mixed Arabic/English hover previews use the browser selection's text direction when available, with the selected phrase displayed separately from the English search label. Long previews trim within the popup. Leaving a toolbar action closes its hover-only popup; an open action menu stays available. This affects display only; copied text stays unchanged.
+Mixed Arabic/English hover previews use the selection's text direction when available, with the selected phrase displayed separately from the English search label. Long previews trim within the popup. Leaving a toolbar action closes its hover-only popup; an open action menu stays available. This affects display only; copied text stays unchanged.
 
 ## What it detects
 
@@ -53,7 +52,7 @@ Mixed Arabic/English hover previews use the browser selection's text direction w
 | UUID | `550e8400-e29b-41d4-a716-446655440000` | Generate new |
 | Base64 | `SGVsbG8gV29ybGQh` | Decode |
 | Date/Time | `2026-04-11T12:00:00+05:00`, Unix timestamps | Convert (Local / UTC / Unix) |
-| Currency | `$33`, `100 SAR`, `€1,500.50`, `€1.500,50` | Convert (handles American & European number formats) |
+| Currency | `$33`, `100 SAR`, `€1,500.50`, `€1.500,50` | Convert to the target currency — USD by default (handles American & European number formats) |
 | JWT | `eyJhbGciOiJI...`, including `alg=none` unsigned tokens | Decode header / payload / signature |
 | Unit | `5 ft`, `100 km/h`, `5 fl oz`, `20°C`, `2 cups` | Convert to all common units |
 
@@ -65,23 +64,25 @@ Detection runs entirely in-process, without network calls.
 
 ## Inline popups
 
-Translate, Dictionary and Currency Converter show results inside SnapActions. The first time you use an online action, SnapActions asks before sending data. You can change this through **Allow online lookups** in Settings.
+Translate and Currency Converter show their results inside SnapActions. The first time an action needs a third-party service, SnapActions asks for permission before anything leaves the machine; you can change that afterwards with **允许在线查找（翻译）** (Allow online lookups) under Settings → 通用 → 工具栏行为.
 
-**Translate** displays Google's normal, visible Translate website inside a compact SnapActions popup using Microsoft Edge WebView2. The selected text and saved source/target languages initialize the page. Google's controls let you change languages, swap them, edit the text and copy the translation. Drag the resize grip for more room, or scroll inside the page for longer text. Use the popup's **Close** control to dismiss it, or **Retry** if the page fails to load. Translate does not open an external browser tab.
+**翻译 (Translate)** sends the selected text to the Baidu Translate open-platform API (`nmt` model) and shows the returned plain text in a SnapActions popup. It never opens a browser tab, an embedded browser or a web view.
 
-The default source is **Detect language**, with English as the target. Changes to language choices supported by SnapActions are saved for the next selection. Google may offer additional languages that are usable on the current page without becoming saved SnapActions preferences.
+- Fill in the Baidu **APP ID** and **密钥** (secret) under Settings → 翻译 → 百度翻译. They auto-save, are encrypted with Windows DPAPI for the current user, and translation reports a configuration error until both are present.
+- Translate is offered only for plain-text selections — URLs, JSON, UUIDs, JWTs and other typed values do not get the action. On the Baidu path the selection is limited to **2000 UTF-8 bytes** (bytes, not characters); with a custom translation engine selected that byte cap no longer applies, because the engine decides what it can handle.
+- The popup's source dropdown starts at 检测语言 (detect language) and its target at your Windows display language. When the text is already in the Windows display language, the target falls back to the language configured as 源语言为 Windows 系统语言时翻译输出的语言 (English by default) so the text is not echoed back untranslated. Changing either dropdown in the popup re-runs the translation and saves that language for the next selection.
+- 内容忽略正则表达式 (Settings → 翻译) deletes everything matching the pattern before the text is sent, and English identifiers are lightly normalized (`camelCase` → `camel Case`, `snake_case` → `snake case`) so they translate as words.
+- **复制结果** copies the translation, **替换原文** injects it over the selection through the same guarded replace path as other results, **重新翻译** retries, the bottom-right grip resizes the popup, and the close button dismisses it. The toolbar does not auto-dismiss while the popup is open; Esc closes the popup without hiding the toolbar.
 
-The initial selection can contain up to **500 UTF-8 bytes**. Search language remains independent. Google handles translation timing and caching; SnapActions does not cache translated results. Translation requires internet access and the Google Translate website to be available. It needs no paid API credentials or account configuration.
+**自定义翻译** (Settings → 翻译 → 自定义翻译) replaces Baidu with JavaScript engines you write — see [JavaScript script actions](#javascript-script-actions). Pick one as 默认引擎 and both the built-in Translate action and any script's `await Translation(text, from, to)` run it; 百度翻译 in that list means "no custom engine". Engines always run in the network sandbox and read the current languages from `SNAP_SOURCE_LANGUAGE` / `SNAP_TARGET_LANGUAGE`.
 
-Install the [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section) if it is missing. The Runtime is a separate prerequisite for inline translation; the bundled .NET runtime serves the desktop app. Microsoft's download page provides a small online bootstrapper and a full standalone installer.
+**货币转换 (Currency Converter)** converts one selected amount to the target currency — USD by default — using exchange rates from open.er-api.com, cached for 6 hours per source currency. Only the rate request for the source currency is sent; the amount stays local.
 
-**Dictionary** uses dictionaryapi.dev's English endpoint. An unsupported saved language produces an error instead of silently looking up another language. **Currency Converter** uses exchange rates from open.er-api.com, cached for 6 hours per source currency.
-
-Dictionary and Currency popups stay open until you press **Esc**, click the **X**, successfully **Copy**, click outside or trigger another lookup. They do not dismiss when the cursor leaves. Their timeouts and service failures offer Retry and cannot be copied as successful results.
+Currency popups stay open until you press **Esc**, click the **X**, successfully copy, click outside or trigger another lookup. They do not dismiss when the cursor leaves. A timeout or a service failure shows the error with a **重试** (Retry) button and offers nothing to copy as a result.
 
 ## Transforms
 
-UPPERCASE · lowercase · Title Case (locale-invariant) · camelCase · PascalCase · snake_case · kebab-case · Reverse (grapheme-aware — emoji and combining marks survive) · Trim · Remove Extra Spaces · Remove Line Breaks · Sort Lines · Remove Duplicates (case-insensitive) · Wrap in quotes / brackets / braces / backticks
+UPPERCASE · lowercase · Title Case (locale-invariant) · camelCase · PascalCase · snake_case · kebab-case · Reverse (grapheme-aware — emoji and combining marks survive) · Trim · Remove Extra Spaces · Remove Line Breaks · Sort Lines · Remove Duplicates (case-insensitive) · Wrap in quotes / brackets / braces / backticks / Chinese quotes 「」
 
 ## Encode / Decode
 
@@ -89,125 +90,141 @@ URL · Base64 · HTML · Hex · ROT13 · MD5 / SHA-1 / SHA-256 / SHA-512 (under 
 
 ## Search
 
-13 built-in engines — 9 enabled by default (Google, Bing, DuckDuckGo, YouTube, Twitter/X, Reddit, GitHub, StackOverflow, Wikipedia) and 4 opt-in (Amazon, IMDb, npm, NuGet — toggle in Settings).
+4 built-in engines — Google, Bing, BiliBili and GitHub — all enabled by default; toggle them under Settings → 动作 → 启用搜索.
 
-- **Per-engine language filter** — apply the global Language only to engines where you want it
-- **Twitter/X** uses `lang:xx` in the search query (works across Top/Latest)
-- **Wikipedia** switches subdomain by language code
-- **Custom engines** via URL templates: `{0}` is the URL-encoded query, `{1}` is the language code
+- **Custom engines** via URL templates: `{0}` is the URL-encoded query. Add a name and URL under Settings → 动作 → 添加自定义搜索 and delete custom engines again from the same list.
+- Both built-in and custom engines hand the query to your default browser; SnapActions itself never makes the request.
 
 ## Customize
 
-- **Pin** an action: drag it from any menu onto the toolbar. A blue insertion line shows where it will land. You can also right-click → Pin to toolbar.
-- **Hide or unpin**: right-click any action, including items in `…`. Use the toolbar gear to see all actions and restore hidden ones; hiding keeps their saved pin order.
-- **Reorder** pins: drag to the left or right half of another pin, or right-click → Move left/right. Dragging works even when a pin is disabled for the current selection.
-- **Paste** uses a compact clipboard icon on the toolbar; its tooltip and accessible name still identify Paste Plain Text.
-- **Reorder** search engines: edit mode in the Search submenu, use ▲ ▼ arrows.
-- **Custom actions**: Settings → Custom — build your own from a URL template (`{0}` = the selection) that either opens in the browser or fetches and shows the result (optionally a single JSON field). Scope it to any detected type or all selections.
-- **Per-app profiles**: Settings → Apps — hide specific actions when a chosen app is in the foreground.
-- **Settings**: double-click the tray icon. Changes auto-save and refresh the current toolbar in browsers and other apps. Pinned actions stay first and do not count toward the suggested-action limit. The toolbar uses the available monitor width; actions that cannot fit remain in `…`. Pinned Paste/Delete remain visible but disabled on read-only text, with an explanatory tooltip.
+- **Pin** an action: drag it from any submenu onto the toolbar. A blue insertion line shows where it will land. You can also right-click → 固定到工具栏 (Pin to toolbar).
+- **Unpin**: right-click the pinned button → 从工具栏取消固定.
+- **Hide or show**: open a submenu's gear to enter edit mode, then left-click an action to toggle it. Hidden actions stay listed with a strikethrough, and edit mode keeps the submenu open while you work through it.
+- **Reorder** pins: drag a pin onto the left or right half of another pin, or right-click → 左移 / 右移.
+- **Submenus**: actions are laid out in a 4-column adaptive grid. With 悬停展开子窗口 (open submenus on hover) on, the 文本转换 (Transform) and 编码/解码 (Encode) submenus open on hover.
+- **Paste** uses the toolbar's 粘贴 button, which pastes the clipboard into the current target.
+- **Per-app exclusions**: Settings → 应用 — one process name per line, with **添加正在运行的应用程序...** (Add running app) to pick from running processes. No toolbar appears while an excluded app is in the foreground.
+- **Settings**: click the tray icon to open it (the tray menu's 更多设置 opens it too). Changes auto-save and refresh the current toolbar immediately.
 
 | Setting | Options | Default |
 |---|---|---|
-| Toolbar show delay | Instant, 100 ms – 1 s | Instant |
-| Multi-click delay | Instant, 100 – 400 ms | 200 ms |
-| Paste mode trigger | Long-press / Double-click / Off | Long-press |
-| Show toolbar automatically when I select text | On / Off | On |
-| Show toolbar when I press Ctrl+C | On / Off | Off |
-| Long-press duration | 300 ms – 1 s | 500 ms |
-| Auto-dismiss after | 3 / 5 / 8 / 15 / 30 s, Never | 8 s |
-| Prefer Replace in the keyboard palette (editable selections) | On / Off | On |
-| Restore previous clipboard after copy action | On / Off | Off |
-| Suggested actions on toolbar | 1 / 2 / 3 / 4 / 6 / 8 (rest fall into `…` overflow) | 8 |
-| Search language filter | Supported search languages or no filter | No filter |
-| Initial translation languages | Saved source and target; adjustable in the Google Translate popup | Detect language → English |
-| Dictionary language | English | English |
-| Theme | System / Light / Dark | System |
-| Target currency | 15 (USD, EUR, SAR, GBP, JPY, …) | USD |
-| Allow online lookups (Translate / Dictionary / Currency) | On / Off | Off — asks on first use |
-| Action categories | Transform / Encode / Search | All on |
-| Excluded apps | Process names — use **Add running app...** to pick from running processes | Password managers (KeePass, 1Password, Bitwarden, Dashlane, Enpass, LastPass, RoboForm, NordPass, ProtonPass, Keeper) |
+| 主题 Theme | 跟随系统设置 / 浅色 / 深色 (System / Light / Dark) | System |
+| 启用工具栏 Enable toolbar | On / Off | On |
+| 开机自启 Start with Windows | On / Off | Off |
+| 划词即复制 Copy on selection | On / Off | Off |
+| 悬停展开子窗口 Open submenus on hover | On / Off | Off |
+| 按 Ctrl+C 时显示工具栏 Show toolbar on Ctrl+C | On / Off | Off |
+| 允许发送合成键 Allow synthetic keys | On / Off | On |
+| 允许在线查找（翻译） Allow online lookups | On / Off | Off — asks on first use |
+| 显示延迟 Toolbar show delay | 立即 (instant), 100 ms – 1 s | 立即 |
+| 多点单击显示延迟 Multi-click delay | 立即, 100 – 400 ms | 200 ms |
+| 自动关闭时间 Auto-dismiss after | 3 / 5 / 8 / 15 / 30 s, 从不 (never) | 8 s |
+| 最大显示建议动作的数量 Suggested actions on toolbar | 1 / 2 / 3 / 4 / 6 / 8 (the rest fall into 更多操作) | 8 |
+| 固定在工具栏的动作 Pinned actions | Any action; reorder by drag or right-click | None |
+| 启用动作 Action groups | 粘贴 / 翻译 / 文本转换 / 编码解码 / 网页搜索 | All on |
+| 启用搜索 Search engines | Google, Bing, BiliBili, GitHub and custom engines | All built-ins on |
+| 翻译项 → 源语言 Translation source | 检测语言 / Windows 显示语言 / supported languages | 检测语言 (detect) |
+| 翻译项 → 目标语言 Translation target | Windows 显示语言 / supported languages | Windows 显示语言 |
+| 翻译项 → 源语言为 Windows 系统语言时的输出 | Supported languages | English |
+| 翻译项 → 内容忽略正则表达式 Translation ignore regex | Any regular expression | Empty |
+| 百度翻译 APP ID / 密钥 Baidu credentials | — | Empty — translation reports a configuration error until set |
+| 自定义翻译 → 默认引擎 Translation engine | 百度翻译 or an added engine | 百度翻译 (no custom engine) |
+| 文本转换方案 Text recipes | Up to 12 pure steps per recipe | None |
+| JS 脚本动作 Script actions | Name + `JSAction(text)` script | None |
+| JS 脚本动作 → 上下文触发 Context trigger | Regular expression | Empty — the action never joins the context row |
+| JS 脚本动作 → 允许此脚本访问网络 Allow network | On / Off, per script | Off |
+| 排除的应用程序 Excluded apps | Process names, one per line | PotPlayerMini64, PotPlayerMini |
+| 目标货币 Target currency | Edited in settings.json | USD |
 
 Settings live at `%AppData%\SnapActions\settings.json`. Writes are crash-safe (serialize to `settings.json.tmp`, then atomic rename) so a process crash mid-write can't blank the file; the write is not fsync'd, so a hard power loss between the rename and the disk flush can still resurrect the previous file content. If the file gets corrupted on load it's renamed to `settings.json.broken-<timestamp>` and defaults are used — never silent data loss. The 5 most recent backups are kept.
 
-Logs go to `%AppData%\SnapActions\logs\YYYY-MM-DD.log`, capped at 10 MB per file (older content rotates to `.log.1`, `.log.2`, …) with files older than 7 days pruned every 24 h of process uptime.
+A few behaviors have no Settings control and are edited in `settings.json`: the paste-mode trigger (`pasteModeTrigger`, default `longpress`), the long-press duration (`longPressDuration`, 500 ms), automatic mouse-selection capture (`captureOnMouseSelection`, on), clipboard restoration after a copy (`restoreClipboardAfterAction`, off), the global search-language filter (`searchLanguage`, empty = no filter) and the per-engine language flag (`useLanguageFilter`).
+
+Logs go to `%AppData%\SnapActions\logs\YYYY-MM-DD.log`, capped at 10 MB per file (older content rotates to `.1`, `.2`, …) with files older than 7 days pruned at most once every 24 hours of process uptime.
 
 ## Local tools and customization
 
-- **Clean tracking link:** previews removal of known tracking parameters while preserving remaining query bytes, duplicates and fragments. It does not remove generic parameters such as `ref` or `token`.
-- **Saved text recipes:** Settings → Custom → Create text recipe. Add/reorder up to 12 existing pure text operations and preview sample text. Save once, then use it from Transform or the palette. Intermediates never touch the clipboard; oversized output or a failed step cancels the result.
-- **App presets:** Settings → Apps → Configure app profiles. Reading, Writing and Development presets add hidden actions to the selected app, preserving existing choices. The editor includes built-in, search, custom and recipe actions.
-- **Settings:** resizable sections with search, dark/light/system appearance, advanced timing controls and visible autosave status/failures. A failed save keeps the window open for retry.
+- **Clean tracking link:** previews removal of known tracking parameters while preserving remaining query bytes, duplicates and fragments. It removes `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `mc_cid`, `mc_eid`, `igshid`, `_hsenc` and `_hsmi`; it does not remove generic parameters such as `ref` or `token`.
+- **Saved text recipes:** Settings → 自定义 → 文本转换方案 → 创建方案. Add, reorder or remove up to 12 existing pure text operations and preview sample text. Save once, then use the recipe from the 文本转换 submenu or pin it like any other action. Intermediates never touch the clipboard; oversized output or a failed step cancels the result.
+- **Settings:** the window has five pages (通用 / 动作 / 翻译 / 自定义 / 应用) with an autosave status line. A failed save keeps the window open with **重试保存** (Retry save).
+
+## JavaScript script actions
+
+Settings → 自定义 → JS 脚本动作 → 添加脚本动作 adds your own text action. Each script defines a global `JSAction(text)`: the selection is passed in and the return value is the result text (a string is used verbatim; arrays and plain objects are serialized as JSON). The action is a Transform action, so it appears in the 文本转换 submenu and can be pinned and reordered like any built-in one.
+
+- **Sandbox:** scripts run in a Jint sandbox with CLR interop disabled — no file, network or clipboard access by default. One run is limited to **2 seconds**, **50,000 statements**, **16 MB** of memory and **128K characters** of output.
+- **Storage:** the source is written to `%APPDATA%\SnapActions\scripts\{Id}.js` and `settings.json` keeps only the file name, so you can edit the `.js` file with your own editor and the next run picks it up.
+- **上下文触发 (context trigger):** an optional regular expression. When it matches the current selection, the script action is also pushed inline into the toolbar's context row (next to Calculate or Format JSON) while remaining available in the 文本转换 submenu. An empty, invalid or pathologically slow pattern simply never matches — a badly backtracking pattern is abandoned after 200 ms rather than delaying the toolbar.
+- **允许此脚本访问网络 (allow this script network access):** per script, off by default. When it is on, the sandbox additionally receives `await http.get(url, options)` / `await http.post(url, body, options)` (returning `{status, ok, headers, body}`) and `await Translation(text, from, to)` (which runs the translation engine selected under 设置 → 翻译 → 自定义翻译). Turning it on asks for the online-lookup consent once. Requests must be absolute http/https URLs; loopback, link-local, `.local` and private-range hosts are refused; a single request is capped at 8 seconds and 256 KB of response body; a run may make at most 5 requests within a 20-second network budget and 30 seconds overall; redirects are not followed and Windows credentials are never attached.
+- **Testing:** the editor runs the script against a sample text as you type and shows the sandbox's `console.log` output. Networked scripts debounce that live preview, issue real requests and need the consent gate; the scripts themselves write nothing to your clipboard or files.
 
 ## Privacy
 
 - **Detection is local.** All detectors run in-process. No network calls for detection.
-- **Inline cloud popups (opt-in).** Translate sends the selection and chosen languages to Google and displays the Google Translate website inside SnapActions. Dictionary sends the selected word to dictionaryapi.dev. Currency requests exchange rates for the source currency from open.er-api.com; the selected amount stays local. These services use HTTPS and run only after you allow online lookups. Any custom "fetch" action you add is gated the same way.
-- **Separate translation profile.** The popup uses a translation-specific WebView2 InPrivate profile and its own application data directory. It does not reuse your regular browser profile.
+- **Online actions are opt-in.** Translate sends the selection and chosen languages to the Baidu Translate API (fanyi-api.baidu.com). Currency requests exchange rates for the source currency from open.er-api.com; the selected amount stays local. A script action you opted into network access, and a custom translation engine you selected, make whatever requests their script defines. All of it runs over HTTPS, only after you allow online lookups, and declining a prompt sends nothing.
+- **Credentials are encrypted at rest.** The Baidu AppID and secret are protected with Windows DPAPI for the current user before they are written to `settings.json`.
 - **Browser-handoff actions.** IP Lookup (ipinfo.io) opens a URL containing your selection in your default browser; SnapActions itself never makes the request. Web search engines work the same way.
 - **Everything else stays local.** Format/minify, transform, encode/decode, hash, color/unit/timezone/JWT/Base64 — none of these touch the network.
-- **Password managers excluded by default.** No toolbar appears when the foreground process is a known password manager. Add your own via Settings → Excluded apps.
+- **Excluded apps.** No toolbar appears while an excluded process is in the foreground; the defaults add PotPlayerMini64 and PotPlayerMini, and you can add your own under Settings → 应用.
 - **Risky-extension prompt.** Opening files with code-bearing extensions (`.exe`, `.bat`, `.ps1`, `.iso`, `.docm`, `.lnk`, …) requires explicit confirmation. Without this, a malicious selection like `C:\Users\you\Downloads\invoice.exe` could be one click away from running.
 - **UNC path prompt.** Opening `\\server\share\…` paths prompts before contacting the remote host. Without the prompt, opening a UNC path on an attacker-controlled network could initiate an SMB connection that leaks your Windows NTLM hash to the named server.
-- **No SnapActions telemetry.** The desktop app has no analytics, automatic updater or account. Online providers and the WebView2 Runtime have their own behavior and policies.
+- **No SnapActions telemetry.** The desktop app has no analytics, automatic updater or account. Online providers have their own behavior and policies.
 
 ## How it works
 
 **Dedicated mouse-hook thread.** The low-level Windows mouse hook runs on its own STA background thread with its own dispatcher. UI thread work — WPF rendering, GC, layout — never delays mouse callbacks. Selection debounce uses `Environment.TickCount64` so NTP sync, hibernation resume, or manual clock changes never spuriously suppress or re-fire the hook.
 
-**Automatic text capture is clipboard-free.** Mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. SnapActions walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. This path never sends `WM_COPY`; only when the tree yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, then restores the previous clipboard.
+**Automatic text capture is clipboard-free.** Mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. SnapActions walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. Automatic capture never sends a copy message: only when the tree yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert keystroke, then restores the previous clipboard.
 
-UI Automation coverage is not universal. Java Swing, some browser/Electron contexts, and custom text renderers may expose no selected text, so the automatic toolbar cannot appear there without a copy operation. A Chromium gesture fails closed when its geometry cannot be mapped safely (including cross-line bidi drags), when its range extends outside the provider's document, or when a double-click word cannot confirm the provider-reported selection length. Enable **Show toolbar when I press Ctrl+C** for those cases: your physical copy supplies the exact text, and SnapActions validates and reads the resulting clipboard value.
+UI Automation coverage is not universal. Java Swing, some browser/Electron contexts, and custom text renderers may expose no selected text, so the automatic toolbar cannot appear there without a copy operation. A Chromium gesture fails closed when its geometry cannot be mapped safely (including cross-line bidi drags), when its range extends outside the provider's document, or when a double-click word cannot confirm the provider-reported selection length. Enable **按 Ctrl+C 时显示工具栏** for those cases: your physical copy supplies the exact text, and SnapActions validates and reads the resulting clipboard value.
 
-**Clipboard behavior is explicit.** Automatic highlighting never touches it. A physical Ctrl+C changes it because you requested a copy. Native result previews close after a successful explicit copy; **Restore previous clipboard after copy action** can put the prior contents back after about 3 seconds. Google's embedded Copy control does not close the translation popup or use SnapActions' clipboard-restoration setting.
+**Clipboard behavior is explicit.** Automatic highlighting never touches it. A physical Ctrl+C changes it because you requested a copy. Native result previews close after a successful explicit copy; `restoreClipboardAfterAction` (off by default, edited in `settings.json`) can put the prior contents back after about 3 seconds. The translation popup's **复制结果** button copies the translation and leaves the popup open.
 
-**Editable-field detection.** Native Delete, Paste and Replace require an enabled control with affirmative writable evidence from UI Automation, plus the captured selection's exact text and endpoints at execution. Missing evidence keeps captured-text actions available but disables edits. A caret or control type alone cannot authorize an edit.
-
-Provider accuracy remains a limit: in the tested VS Code 1.113.0 screen-reader mode, a session-read-only editor reported writable text patterns. SnapActions offered Delete, which VS Code rejected without changing the document. With the default accessibility setting, the tested editor did not expose usable selection ranges; explicit Ctrl+C supplied text while editing pins stayed disabled. The [VS Code follow-up](release-validation-2026-09-08.md#vs-code-read-only-follow-up) explains why this remains a known limitation.
+**Replacement targets are revalidated, not assumed.** A replace captures the clipboard, re-checks the original target's window identity and the captured selection, and only then injects the paste; the target application still decides whether it accepts the text. A caret or control type alone never authorizes an edit.
 
 **Per-monitor DPI throughout.** Toolbar positioning, hit-testing, and the sub-menu popup each look up the DPI of the monitor they're rendering on, including when the popup spills onto a different-DPI monitor than the toolbar.
 
-**Guarded synthetic input.** Every path that injects input back into the user's app — transforms in editable fields, long-press paste-mode, Paste Plain Text, Delete — carries the original target's foreground and focused HWND, process/thread, and available UIA identity. It rechecks that identity and the captured selection before committing input. These checks reject observed target changes; Windows does not provide an atomic transaction covering another application's selection and subsequent keyboard input.
+**Guarded synthetic input.** Every path that injects input back into the user's app — long-press paste mode, Paste, and replacing a selection with a result — carries the original target's foreground and focused HWND, process/thread, and available UIA identity. It rechecks that identity and the captured selection before committing input. These checks reject observed target changes; Windows does not provide an atomic transaction covering another application's selection and subsequent keyboard input.
 
 **When the toolbar appears (and when it doesn't).** Mouse-up after a drag, double/triple-click, or long-press *can* trigger the toolbar — but several gates have to agree before it shows. In order:
 
 1. **NCHITTEST gate** (gesture-fire time) — gestures that started on a window's title bar, resize border, or native scrollbar are dropped. The hook can't tell those drags from a text-selection drag at the OS level, so we ask the receiving window via `WM_NCHITTEST` — deferred to fire time so only candidate selection gestures (not every click system-wide) pay the cross-process round-trip.
 2. **Scrollbar-edge heuristic** (mouse-up) — a drag with both endpoints within ~25 px of the right (or left, in RTL layouts) edge AND primarily vertical is treated as a custom-scrollbar drag (Chrome, VS Code, Slack, Electron apps). Same with bottom edge + horizontal motion.
 3. **Cursor-shape gate** (mouse-down + mouse-up) — the OS shows the text (I-beam) cursor over selectable text, a more universal signal than UIA TextPattern. I-beam at either point permits capture. A *hard* non-text cursor (resize, crosshair, wait, no-drop, …) at both points — resizing a window, a busy app, dragging a slider — is dropped before UIA work. Arrow, link-hand, custom, and unreadable cursors remain eligible because browsers and custom controls can display them over real selectable text.
-4. **Excluded-app + self-PID checks** — anything in your Settings → Excluded apps list never sees a toolbar, and clicks on SnapActions's own toolbar are ignored.
+4. **Excluded-app + self-PID checks** — anything in your Settings → 应用 list never sees a toolbar, and clicks on SnapActions's own toolbar are ignored.
 5. **Selection read** — SnapActions checks the focused element's accessibility tree and then the element under the cursor; if neither yields text, the synthetic Ctrl+Insert fallback can still supply it. A known non-text item stops capture. Empty or unavailable data produces no toolbar.
 
-If a suppression case is misbehaving in your app, check the log file (`%AppData%\SnapActions\logs\YYYY-MM-DD.log`) — every gate that fires writes a line with the cursor position and reason. As an escape hatch, add the app's process name to **Settings → Excluded apps**.
+If a suppression case is misbehaving in your app, check the log file (`%AppData%\SnapActions\logs\YYYY-MM-DD.log`) — every gate that fires writes a line with the cursor position and reason. As an escape hatch, add the app's process name to **Settings → 应用**.
 
 ## Build from source
 
 ```bash
-git clone https://github.com/roko-tech/SnapActions.git
-cd SnapActions
+git clone https://github.com/XuejiMeixiangli/IKonwText.git
+cd IKonwText
 dotnet build SnapActions/SnapActions.csproj -c Release
 dotnet test SnapActions.Tests/SnapActions.Tests.csproj
 ```
 
-Build a complete verified package (Windows, .NET SDK 10.0.303, and Python 3.11+):
+Build a complete verified package (Windows, .NET SDK 10.0.400 as pinned by `global.json`, and Python 3.11+):
 
 ```powershell
 python tools/package.py
 ```
 
-`SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained executable, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders. It never replaces an existing installation. NuGet dependencies are locked and `global.json` pins the SDK.
+`SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained single-file executable, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders of the settings pages, tray menu, toolbar and editors. It never replaces an existing installation. NuGet dependencies are restored in locked mode and `global.json` pins the SDK. `SnapActions/publish.bat` is the shortcut for a plain single-file publish without the verification steps.
 
 For isolated manual testing, set `SNAPACTIONS_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
 
 ## Tests & CI
 
-The xUnit suite covers detection, transforms, native target/clipboard ownership, partial input, selection generations, UIA single-flight gates, lookup failures and caching, settings migrations, toolbar pinning/reordering/visibility, link cleaning, and recipe execution. Fetch action tests exercise the production service's JSON parsing, UTF-8 byte limits, cancellation and interrupted responses. Compiled WPF checks include settings write/replace failures, visible errors, retained saved preferences and retry/reload recovery. Retired WM_COPY capture-planner tests were removed with the inactive planner; explicit paste/delete safety tests remain.
+The xUnit suite covers detection and selection geometry (including multiline and bidi mapping), transforms and encoders, unit/color/math conversion, the Baidu client and credential storage, capture policy and selection validation, clipboard/operation safety, JS script execution (sandbox results, console capture, context triggers and the network bridge), toolbar pinning/visibility preferences, search URL templates, and lookup/fetch response handling.
 
-CI runs the complete [package gate](../tools/package.py), including the published executable's `--self-test` and compiled WPF layout/state checks. See [the workflow](../.github/workflows/build.yml), [CI runs](https://github.com/roko-tech/SnapActions/actions/workflows/build.yml), and [validation notes](implementation-validation.md). Automated checks and compiled renders do not certify every live interaction; the remaining gaps are listed in the release notes.
+CI runs the complete [package gate](../tools/package.py), which restores packages in locked mode, runs the xUnit suite with warnings treated as errors, publishes the self-contained executable, runs its `--self-test` (compiled WPF layout/state checks and renders, reported as a JSON receipt) against an isolated data directory, and writes the ZIP plus SHA-256 checksums. See [the workflow](../.github/workflows/build.yml) and [CI runs](https://github.com/XuejiMeixiangli/IKonwText/actions/workflows/build.yml). Automated checks and compiled renders do not certify every live interaction.
 
 ## Architecture
 
-Selection events create an operation generation tied to the original target. `SelectionCoordinator` reads the selection through UI Automation and returns an immutable `SelectionSnapshot`. The registry matches actions, the toolbar presents them, and `ActionRunner` coordinates explicit effects. `ClipboardTransaction` owns native snapshots and rollback; `InputExecutor` owns guarded paste/delete. When UI Automation yields no selection, capture falls back to a synthetic Ctrl+Insert copy and restores the previous clipboard.
+Selection events create an operation generation tied to the original target. `SelectionCoordinator` reads the selection through UI Automation and returns an immutable `SelectionSnapshot`. The registry matches actions and the toolbar presents them; `ActionRunner` coordinates explicit effects, `ClipboardTransaction` owns native snapshots and rollback, and `InputExecutor` owns guarded paste/replace input. When UI Automation yields no selection, capture falls back to a synthetic Ctrl+Insert copy and restores the previous clipboard.
 
-`LookupService` owns dictionary/currency/custom-fetch HTTP response budgets, provider parsing and successful exchange-rate caching. `ResultPopup` owns their loading/success/empty/error/cancelled presentation and stale-retry suppression. Translation uses a separate WebView2 popup hosting the visible Google Translate page. Settings parsing normalizes semantic data before migrations; test instances have explicit runtime paths.
+`LookupService` owns currency/custom-fetch HTTP response budgets, provider parsing and successful exchange-rate caching. `ResultPopup` owns their loading/success/empty/error/cancelled presentation and stale-retry suppression. `BaiduTranslator` owns the Baidu request signing and response parsing, `TranslationEngineService` runs the selected JS translation engine, and the toolbar's own translation popup renders both without a web view. `JsScriptRunner` hosts the Jint sandbox (`ScriptHttpBridge` backs opted-in network access) and `ScriptActionStorage` keeps script sources as `scripts\{Id}.js` files. Settings parsing normalizes semantic data before migrations; test instances have explicit runtime paths.
 
 Capture diagnostics are recorded for the log: timings separate event-time target identification, dispatcher queue, UIA reads, validation, classification, action matching and render-ready latency. Busy/timeout counters expose the cost of unavailable UIA providers. Render-ready excludes physical screen paint; these measurements are not a blanket performance claim. A hung UIA worker retains the single-flight gate to prevent thread accumulation.

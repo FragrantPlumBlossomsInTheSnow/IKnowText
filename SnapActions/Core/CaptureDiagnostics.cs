@@ -8,7 +8,6 @@ internal static class CaptureDiagnostics
     private static readonly Queue<(string Stage, double Milliseconds)> Samples = new();
     private static string _status = "No capture attempted yet";
     private static long _uiaCompleted, _uiaBusy, _uiaTimedOut;
-    internal static int ConnectedBrowsers;
 
     internal static void UiaOutcome(bool busy = false, bool timedOut = false)
     {
@@ -33,7 +32,6 @@ internal static class CaptureDiagnostics
         {
             var lines = new List<string>
             {
-                $"Browser connections: {Volatile.Read(ref ConnectedBrowsers)}",
                 $"Last capture: {_status}",
                 $"Bounded UIA calls: {Interlocked.Read(ref _uiaCompleted)} completed, {Interlocked.Read(ref _uiaBusy)} busy, {Interlocked.Read(ref _uiaTimedOut)} timed out"
             };

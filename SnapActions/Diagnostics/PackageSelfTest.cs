@@ -324,7 +324,7 @@ internal static class PackageSelfTest
             }
             toolbar.Close(); checks.Add("Toolbar width budget and accessible More at 400/600 DIPs");
             CheckToolbarCustomization(registry);
-            checks.Add("Live settings refresh for browser/native providers, persistent read-only pins, drag/drop insertion, hide/show and unpin controls");
+            checks.Add("Live settings refresh for selection providers, persistent read-only pins, drag/drop insertion, hide/show and unpin controls");
             await CheckToolbarPreviewAsync(registry);
             checks.Add("Hover preview reopen/leave lifecycle, constrained text layout, light/dark renders, and feedback after customization");
 
@@ -371,7 +371,7 @@ internal static class PackageSelfTest
         File.WriteAllText(Path.Combine(RuntimePaths.DataDirectory, "self-test.json"), JsonSerializer.Serialize(new
         {
             passed = failure == null, checks, failure,
-            limitations = "Compiled WPF layout checks do not establish physical keyboard/mouse, UIA provider, browser selection, or mixed-monitor behavior."
+            limitations = "Compiled WPF layout checks do not establish physical keyboard/mouse, UIA provider or mixed-monitor behavior."
         }, new JsonSerializerOptions { WriteIndented = true }));
         return failure == null ? 0 : 1;
     }
@@ -455,7 +455,7 @@ internal static class PackageSelfTest
         var pins = (StackPanel)toolbar.FindName("PinnedActionsPanel");
         var context = (StackPanel)toolbar.FindName("ContextActionsPanel");
         Button Pin(string id) => pins.Children.OfType<Button>().Single(b => ((IAction)b.Tag).Id == id);
-        foreach (var provider in new[] { SelectionProviderKind.Browser, SelectionProviderKind.UiAutomation })
+        foreach (var provider in new[] { SelectionProviderKind.UiAutomation, SelectionProviderKind.ExplicitCopy })
         foreach (bool editable in new[] { true, false })
         {
             SetField(toolbar, "_selectionProvider", provider);
@@ -478,7 +478,7 @@ internal static class PackageSelfTest
         settings.AppHiddenActions["BRAVE"] = ["ws_trim"]; toolbar.RefreshActions();
         Require(!pins.Children.OfType<Button>().Any(b => ((IAction)b.Tag).Id == "ws_trim"), "Pin bypassed the current app's hidden actions");
         SetField(toolbar, "_appName", "notepad"); toolbar.RefreshActions();
-        Require(pins.Children.Count == 4, "Browser profile leaked into a native app");
+        Require(pins.Children.Count == 4, "An app profile leaked into another app");
         SetField(toolbar, "_appName", "brave"); settings.AppHiddenActions.Clear();
         settings.ShowTransformActions = true; toolbar.RefreshActions();
 
