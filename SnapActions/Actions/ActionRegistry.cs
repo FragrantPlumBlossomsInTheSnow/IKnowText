@@ -186,7 +186,7 @@ public partial class ActionRegistry
         if (s.ShowTranslateActions)
         {
             // 仅翻译动作进入 Translate 组；不可用 Transform 类别过滤，否则会把所有文本转换
-            // 动作重复塞进 Translate 组，造成工具栏/调色板同一动作出现两次。
+            // 动作重复塞进 Translate 组，造成工具栏同一动作出现两次。
             var list = applicable.Where(a => a.Id == "translate").ToList();
             if (list.Count > 0) groups.Add(new ActionGroup("Translate", "", list));
         }

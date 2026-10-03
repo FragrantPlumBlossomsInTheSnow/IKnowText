@@ -17,10 +17,6 @@ public class SelectionTracker
     private readonly BrowserSelectionBridge _browser = new();
     private ToolbarWindow? _toolbar;
     private readonly SelectionCoordinator _coordinator;
-    // 键盘调色板（Ctrl+Shift+Space）已停用：不再注册全局热键，也不再缓存调色板窗口。
-    // 保留 ActionPalette 类本身（self-test 仍引用），仅从运行链路中摘除。
-    // private GlobalHotkey? _paletteHotkey;
-    // private ActionPalette? _palette;
     // TickCount64 is monotonic — wall-clock jumps (NTP sync, hibernation resume, manual time
     // change) used to spuriously suppress or re-fire the debounce when DateTime.UtcNow drifted.
     private long _lastShowTicks;
@@ -73,17 +69,12 @@ public class SelectionTracker
             _toolbar = new ToolbarWindow { Registry = _actionRegistry };
             _toolbar.Left = -9999; _toolbar.Top = -9999; _toolbar.Opacity = 0;
             _toolbar.Show(); _toolbar.Hide();
-            // 键盘调色板热键已停用（见字段注释）。
-            // _paletteHotkey = new GlobalHotkey(OnPaletteRequested);
         });
     }
 
     public void Stop()
     {
         _operations.Invalidate();
-        // 键盘调色板已停用，无需释放热键/关闭调色板窗口。
-        // _paletteHotkey?.Dispose();
-        // _palette?.Close();
         _browser.Dispose();
         KeyboardHook.CtrlCPressed -= OnCtrlCPressed;
         KeyboardHook.PhysicalCtrlInsertPressed -= OnPhysicalCtrlInsertPressed;
@@ -415,31 +406,6 @@ public class SelectionTracker
             }
         });
     }
-
-    // 键盘调色板（Ctrl+Shift+Space）已停用：回调不再被热键触发，整体摘除运行链路。
-    // private async void OnPaletteRequested()
-    // {
-    //     if (!SettingsManager.Current.Enabled)
-    //     { CaptureDiagnostics.SetStatus("Palette ignored: app disabled"); return; }
-    //     if (IsSelfFocused())
-    //     { CaptureDiagnostics.SetStatus("Palette ignored: SnapActions itself is focused"); return; }
-    //     if (ForegroundApp.IsExcluded(SettingsManager.Current.ExcludedApps))
-    //     { CaptureDiagnostics.SetStatus("App excluded by settings"); return; }
-    //     try
-    //     {
-    //         var operation = _operations.Begin(default).WithTarget(ForegroundGuard.CaptureWithAutomationIdentity());
-    //         SnapActions.Helpers.NativeMethods.GetCursorPos(out var point);
-    //         var snapshot = await _coordinator.CaptureAsync(operation,
-    //             new UiaSelectionProvider.SelectionGesture(false, 0, point.X, point.Y, point.X, point.Y), point.X, point.Y);
-    //         if (!operation.IsCurrent) return;
-    //         _toolbar?.HideToolbarIfOperationStale();
-    //         _palette?.Close();
-    //         _palette = new ActionPalette(snapshot, _actionRegistry);
-    //         _palette.Show();
-    //         _palette.Activate();
-    //     }
-    //     catch (Exception ex) { SnapActions.Helpers.Log.Error("Keyboard palette", ex); }
-    // }
 
     internal static bool ShouldCaptureMouseSelection(AppSettings settings) =>
         settings.CaptureOnMouseSelection;

@@ -35,7 +35,6 @@ internal static class CaptureDiagnostics
             {
                 $"Browser connections: {Volatile.Read(ref ConnectedBrowsers)}",
                 $"Last capture: {_status}",
-                $"Keyboard palette: {(GlobalHotkey.IsRegistered ? "Ctrl+Shift+Space registered" : "shortcut unavailable or not started")}",
                 $"Bounded UIA calls: {Interlocked.Read(ref _uiaCompleted)} completed, {Interlocked.Read(ref _uiaBusy)} busy, {Interlocked.Read(ref _uiaTimedOut)} timed out"
             };
             foreach (var stage in Samples.GroupBy(s => s.Stage))

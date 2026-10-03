@@ -204,8 +204,6 @@ public class AppSettings
     /// </summary>
     public int ExcludedAppsDefaultsVersion { get; set; } = 0;
 
-    public bool ReplaceSelectionOnTransform { get; set; } = true;
-
     /// <summary>
     /// When true, after a toolbar action puts result text on the clipboard the previous
     /// clipboard contents are restored ~3 seconds later. Opt-in because the delay can race
@@ -299,10 +297,12 @@ public class AppSettings
     public static List<SearchEngine> GetDefaultEngines() =>
     [   
         new() { Id = "google", Name = "Google", IsBuiltIn = true,
-            UrlTemplate = "https://www.google.com/search?q={0}&lr=lang_{1}&hl={1}" },
+            UrlTemplate = "https://www.google.com/search?q={0}" },
         new() { Id = "bing", Name = "Bing", IsBuiltIn = true,
-            UrlTemplate = "https://www.bing.com/search?q={0}&setlang={1}" },
-        new() { Id = "BiLiBiLi", Name = "BiliBili", IsBuiltIn = true,
+            UrlTemplate = "https://www.bing.com/search?q={0}" },
+        new() { Id = "bilibili", Name = "BiliBili", IsBuiltIn = true,
             UrlTemplate = "https://search.bilibili.com/all?keyword={0}" },
+        new() { Id = "github", Name = "GitHub", IsBuiltIn = true,
+            UrlTemplate = "https://github.com/search?q={0}" },
     ];
 }

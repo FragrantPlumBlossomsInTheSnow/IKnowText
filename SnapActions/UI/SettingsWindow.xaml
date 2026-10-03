@@ -245,23 +245,18 @@
                                 <StackPanel>
 
                                     <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <!-- <CheckBox x:Name="ReplaceSelectionCheck" -->
-                                    <!--           Content="在键盘调色板中，更倾向于使用“替换”（可编辑选择）" -->
-                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
-                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
                                     <!-- <CheckBox x:Name="RestoreClipboardCheck" -->
                                     <!--           Content="复制操作后约3秒恢复上一个剪贴板内容" -->
                                     <!--           ToolTip="当您单击复制文本的工具栏操作（格式化JSON、转换颜色等）时，结果将落在剪贴板上。启用此选项后，之前的剪贴板内容将在大约3秒后放回，这足够您先粘贴结果。" -->
                                     <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
                                     <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
                                     <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <!-- <CheckBox x:Name="OnlineLookupsCheck" -->
-                                    <!--           Content="允许在线查找（翻译）" -->
-                                    <!--           ToolTip="翻译将选定的文本发送到百度开放平台API。关闭此选项后，会在您选择之前询问。" -->
-                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
-                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
+                                    <CheckBox x:Name="OnlineLookupsCheck"
+                                              Content="允许在线查找（翻译）"
+                                              ToolTip="翻译将选定的文本发送到百度开放平台API。关闭此选项后，会在您选择之前询问。"
+                                              Style="{StaticResource SettingCheckBoxStyle}"
+                                              Checked="Setting_Changed" Unchecked="Setting_Changed" />
+                                    <Border Style="{StaticResource SettingDivider}" />
                                     <!-- <CheckBox x:Name="CaptureOnMouseSelectionCheck" -->
                                     <!--           Content="选择文本时自动显示工具栏" -->
                                     <!--           ToolTip="自动选择捕获使用浏览器伴侣或UI自动化，从不复制或触摸剪贴板。如果应用程序没有显示所选文本，请使用下面的Ctrl+C触发器。" -->
@@ -383,9 +378,6 @@
                                 </StackPanel>
                             </Expander>
 
-
-                            <!-- <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" -->
-                            <!--            Text="按Ctrl+Shift+Space可使用键盘搜索操作。选择一个操作进行预览，然后选择“复制”或“替换”。如果文本无法读取，调色板允许您输入文本。" /> -->
 
                         </StackPanel>
                     </ScrollViewer>
@@ -594,6 +586,7 @@
                                     </DockPanel>
                                 </StackPanel>
                             </Expander>
+                            
 
 
                             <!-- Target Currency -->
@@ -642,7 +635,7 @@
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <TextBlock TextWrapping="Wrap"
-                                               Text="编写 JS 脚本处理选中文本：脚本定义 JSAction(text) 并返回结果（字符串直接使用，数组/对象转成 JSON），会出现在「文本转换」动作中。脚本在沙箱内运行（不能访问文件/网络/剪贴板），单次限时 2 秒，输出上限 128K 字符。调试可用 console.log(...)，输出显示在编辑器「console 输出」中。" />
+                                               Text="" />
                                     <StackPanel x:Name="ScriptActionsPanel" Margin="0,8" />
                                     <ui:Button Content="添加脚本动作" HorizontalAlignment="Left"
                                                Style="{StaticResource WpfUiButtonStyle}"
@@ -705,7 +698,7 @@
                     <!--         <StackPanel Margin="16"> -->
                     <!--             <TextBlock Text="浏览器伴侣" Style="{StaticResource SettingsHeading}" /> -->
                     <!--             <TextBlock TextWrapping="Wrap" -->
-                    <!--                        Text="读取浏览器的实际选择内容，包括混合的阿拉伯语和英语文本。只有当您选择文本或调用调色板时，配套工具才会读取活动标签页的内容。" /> -->
+                    <!--                        Text="读取浏览器的实际选择内容，包括混合的阿拉伯语和英语文本。只有当您选择文本时，配套工具才会读取活动标签页的内容。" /> -->
                     <!--             <TextBlock -->
                     <!--                 Text="1.将SnapActions.exe及其浏览器扩展文件夹放在一个永久位置。" -->
                     <!--                 TextWrapping="Wrap" Margin="0,14,0,6" /> -->

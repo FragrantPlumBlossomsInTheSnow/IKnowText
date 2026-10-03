@@ -26,7 +26,7 @@ public sealed class UserScriptAction(UserAction def) : IAction
     /// <summary>
     ///     「上下文触发」：配了正则且命中当前选区时，注册表会把该动作同时放进 Context 组，
     ///     于是它像内置的数学计算/格式化 JSON 一样内联在工具栏 ContextSeparator 后面。
-    ///     动作本身仍是 Transform 类别 —— 转换子菜单、固定区、调色板里的行为都不变。
+    ///     动作本身仍是 Transform 类别 —— 转换子菜单、固定区里的行为都不变。
     /// </summary>
     internal bool IsContextTriggered(string text) => ContextTriggerRegex.IsMatch(def.ContextRegex, text);
 

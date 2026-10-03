@@ -262,16 +262,6 @@ internal static class PackageSelfTest
             checks.Add("Script editor console capture and context-trigger feedback");
 
             var registry = new ActionRegistry();
-            var source = new SelectionOperationSource();
-            var snapshot = new SelectionSnapshot("Hello العربية", TextAnalysis.PlainText, source.Begin(default), false, SelectionProviderKind.Manual);
-            var palette = new ActionPalette(snapshot, registry);
-            ((TextBox)palette.FindName("SearchBox")).Text = "全大写";
-            var list = (System.Windows.Controls.ListBox)palette.FindName("ActionsList");
-            Require(list.Items.Count == 1, "Palette filtering failed");
-            Require(((TextBlock)palette.FindName("PreviewText")).Text == "HELLO العربية", "Palette preview changed text");
-            Require(!((ComboBoxItem)((System.Windows.Controls.ComboBox)palette.FindName("DestinationBox")).Items[1]).IsEnabled, "Read-only palette offered replacement");
-            Render(palette, "palette", 580, 565); palette.Close();
-            checks.Add("Palette filter, exact preview, read-only destination");
 
             var toolbar = new ToolbarWindow { Registry = registry };
             SettingsManager.Current.PinnedActionIds = registry.GetAllActionsForCategory(ActionCategory.Transform).Select(a => a.Id).ToList();
