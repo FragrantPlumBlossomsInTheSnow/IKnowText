@@ -38,7 +38,10 @@ public partial class ToolbarWindow
     /// <summary>工具栏翻译按钮/动作的入口：打开翻译弹层并立即发起翻译。</summary>
     internal void ShowTranslate(string text)
     {
-        if (!BaiduTranslator.CanTranslate(text) || !ResultPopup.EnsureOnlineLookupConsent()) return;
+        // 选中自定义翻译引擎时不套百度的字节/纯文本门槛 —— 能处理什么是引擎自己的事。
+        var hasEngine = TranslationEngineService.HasSelectedEngine();
+        if ((!hasEngine && !BaiduTranslator.CanTranslate(text)) || !ResultPopup.EnsureOnlineLookupConsent())
+            return;
         text = TranslationTextHelper.NormalizeEnglishIdentifiers(text);
         if (string.IsNullOrEmpty(text)) return;
 
@@ -137,6 +140,36 @@ public partial class ToolbarWindow
         var requestTo = ResolveTarget(rawFrom, _translateText);
         if (from.Length > 0 && requestTo.Equals(from, StringComparison.OrdinalIgnoreCase))
             requestTo = settings.TranslationSystemTargetLanguage;
+
+        // 选中的自定义翻译引擎优先：不再需要百度凭据，也不再套百度的字节上限。
+        var engine = TranslationEngineService.SelectedEngine();
+        if (engine != null)
+        {
+            ShowTranslateStatus("正在翻译…");
+            TranslateResultBox.Text = "";
+            try
+            {
+                Log.Info($"Custom translate engine '{engine.Name}': from={from} to={requestTo} len={_translateText.Length}");
+                var translated = await TranslationEngineService.RunAsync(engine, _translateText, from, requestTo, token);
+                if (!TranslatePopup.IsOpen || token.IsCancellationRequested) return;
+                TranslateResultBox.Text = translated;
+                TranslateStatusText.Visibility = Visibility.Collapsed;
+            }
+            catch (OperationCanceledException)
+            {
+                // 切换语言 / 关闭弹层 / 超时导致的取消：静默，交给下一次调用。
+            }
+            catch (Exception ex)
+            {
+                if (!TranslatePopup.IsOpen || token.IsCancellationRequested) return;
+                ShowTranslateStatus(ex.Message);
+            }
+            finally
+            {
+                _translateBusy = false;
+            }
+            return;
+        }
 
         var (appid, secret) = CredentialCrypto.DecryptBaidu(settings.BaiduCredentialsBlob);
         if (string.IsNullOrEmpty(appid) || string.IsNullOrEmpty(secret))

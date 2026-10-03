@@ -48,6 +48,21 @@ internal static class SettingsValidator
             if (a.ContextRegex.Length > 2048) a.ContextRegex = a.ContextRegex[..2048];
             if (!Enum.IsDefined(a.Kind)) a.Kind = UserActionKind.OpenUrl;
         }
+        // 自定义翻译引擎：与脚本动作同一套有效性规则（必须能读到脚本），默认引擎不存在或未启用时清空
+        // ——清空即回退百度翻译，不会留下指向空气的选中项。
+        s.TranslationEngines = (s.TranslationEngines ?? [])
+            .Where(a => a != null && ValidId(a.Id) && !string.IsNullOrWhiteSpace(a.Name)
+                && (!string.IsNullOrWhiteSpace(a.Code) || !string.IsNullOrWhiteSpace(a.ScriptFile)))
+            .DistinctBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var engine in s.TranslationEngines)
+        {
+            engine.Code ??= "";
+            engine.ScriptFile ??= "";
+            if (engine.Code.Length > 64 * 1024) engine.Code = engine.Code[..(64 * 1024)];
+        }
+        s.SelectedTranslationEngineId ??= "";
+        if (!s.TranslationEngines.Any(e => e.Id == s.SelectedTranslationEngineId && e.Enabled))
+            s.SelectedTranslationEngineId = "";
         var profiles = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in s.AppHiddenActions ?? [])
         {

@@ -1,0 +1,57 @@
+<Window x:Class="SnapActions.UI.TranslationEngineEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="翻译引擎" Width="720" MinWidth="460" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+
+    <!-- 自定义翻译引擎编辑器（与「JS 脚本动作」编辑器相互独立，改这个不会影响那个）。
+         引擎必然联网：沙箱注入 http.get/post 与语言全局变量，但**不**注入 Translation
+         （否则引擎调用 Translation 会自递归）。行为都在 TranslationEngineEditor.xaml.cs。 -->
+    <ScrollViewer VerticalScrollBarVisibility="Visible">
+
+        <StackPanel Margin="20">
+            <TextBlock Text="引擎名称" Margin="0,0,0,6" />
+            <TextBox x:Name="NameBox" Padding="8" MaxLength="80"
+                     AutomationProperties.Name="翻译引擎名称" />
+
+            <TextBlock Text="Javascript 脚本（必须定义函数 JSAction(text)，返回值即译文）" Margin="0,14,0,6" />
+            <Button Content="生成 JSAction(text)" Click="GenerateJSAction_Click" Padding="8, 3" Margin="0,0,0, 6" />
+            <TextBox x:Name="CodeBox" FontFamily="Consolas" AcceptsReturn="True" AcceptsTab="True"
+                     MinHeight="240"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="2,6"
+                     AutomationProperties.Name="引擎脚本源码" TextChanged="Code_Changed" />
+            <TextBlock x:Name="SandboxHintText" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="引擎脚本以联网沙箱运行：可用 await http.get/post；无法访问文件/剪贴板；单次执行限时 2 秒，输出上限 128K 字符。" />
+            <TextBlock x:Name="NetworkHintText" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="当前语言通过全局变量 SNAP_SOURCE_LANGUAGE / SNAP_TARGET_LANGUAGE 提供（由翻译弹层的当前选择写入）；沙箱不提供 Translation。请求受白名单、大小与次数限制：单请求 ≤8 秒、响应 ≤256KB、单次运行 ≤5 个请求。" />
+            <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Text="可用 console.log，输出只在「console 输出」显示；首次联网需通过「允许在线查询」同意门。" />
+
+            <TextBlock Text="试跑文本" Margin="0,14,0,6" />
+            <!-- 默认试跑文本在 TranslationEngineEditor.xaml.cs 里赋值：写在 XAML 会在控件创建到一半时触发 TextChanged。 -->
+            <TextBox x:Name="SampleBox" AcceptsReturn="True" Height="60" TextWrapping="Wrap" Padding="2,6"
+                     MaxLength="4096" AutomationProperties.Name="试跑文本" TextChanged="Sample_Changed" />
+
+            <TextBlock Text="return 输出" Margin="0,14,0,6" />
+            <TextBox x:Name="PreviewBox" IsReadOnly="True" MinHeight="80" TextWrapping="Wrap"
+                     Padding="2,6"
+                     AutomationProperties.Name="引擎试跑预览" />
+            <TextBlock Text="console 输出" Margin="0,10,0,6" />
+            <TextBox x:Name="LogsBox" IsReadOnly="True" MinHeight="70" MaxHeight="150" TextWrapping="Wrap"
+                     Padding="2,6"
+                     VerticalScrollBarVisibility="Auto" FontFamily="Consolas"
+                     AutomationProperties.Name="引擎试跑日志" />
+
+            <TextBlock x:Name="StatusText" Margin="0,16,0,0" TextWrapping="Wrap" HorizontalAlignment="Right" />
+            <WrapPanel Margin="0,10,0,0" HorizontalAlignment="Right">
+                <Button Content="取消" Padding="8,5" Margin="4,3,0,3" Cursor="Hand" Click="Cancel_Click" />
+                <Button Content="保存" Padding="8,5" Margin="4,3,0,3" Cursor="Hand" Click="Save_Click" />
+            </WrapPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

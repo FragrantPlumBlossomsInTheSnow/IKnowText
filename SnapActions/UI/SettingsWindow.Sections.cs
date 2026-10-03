@@ -31,6 +31,8 @@ public partial class SettingsWindow
         var (appId, secret) = CredentialCrypto.DecryptBaidu(s.BaiduCredentialsBlob);
         BaiduAppIdBox.Text = appId;
         BaiduSecretBox.Password = secret;
+        // 自定义翻译引擎：与「自定义 JS 脚本动作」同一套编辑器/存储，单独一份列表 + 默认引擎选择。
+        BuildTranslationEnginesList();
         AutoStartCheck.IsEnabled = !RuntimePaths.IsIsolated;
         BuildRecipesList();
         BuildScriptActionsList();
@@ -205,6 +207,84 @@ public partial class SettingsWindow
         }
     }
 
+    // ── 自定义翻译引擎：与「自定义 JS 脚本动作」同构（同一个编辑器与 scripts\ 存储） ──────────
+
+    private void BuildTranslationEnginesList()
+    {
+        TranslationEnginesPanel.Children.Clear();
+        foreach (var engine in SettingsManager.Current.TranslationEngines.ToList())
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+            var remove = new Button { Content = "删除", Padding = new Thickness(8, 3, 8, 3) };
+            System.Windows.Automation.AutomationProperties.SetName(remove, "Delete translation engine " + engine.Name);
+            remove.Click += (_, _) =>
+            {
+                if (MessageBoxResult.No != MessageBox.Show("删除 " + engine.Name, "SpanActions", MessageBoxButton.YesNo))
+                    return;
+                ScriptActionStorage.Delete(engine);
+                SettingsManager.Current.TranslationEngines.Remove(engine);
+                if (SettingsManager.Current.SelectedTranslationEngineId == engine.Id)
+                    SettingsManager.Current.SelectedTranslationEngineId = "";
+                BuildTranslationEnginesList(); QueueSave();
+            };
+            DockPanel.SetDock(remove, Dock.Right); row.Children.Add(remove);
+            var edit = new Button { Content = "编辑", Margin = new Thickness(8, 0, 8, 0), Padding = new Thickness(8, 3, 8, 3) };
+            System.Windows.Automation.AutomationProperties.SetName(edit, "Edit translation engine " + engine.Name);
+            edit.Click += (_, _) => EditTranslationEngine(engine);
+            DockPanel.SetDock(edit, Dock.Right); row.Children.Add(edit);
+            var enabled = new CheckBox
+            {
+                Content = engine.Name,
+                IsChecked = engine.Enabled,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            enabled.Checked += (_, _) => { engine.Enabled = true; QueueSave(); };
+            enabled.Unchecked += (_, _) => { engine.Enabled = false; QueueSave(); };
+            row.Children.Add(enabled);
+            TranslationEnginesPanel.Children.Add(row);
+        }
+        RefreshTranslationEngineCombo();
+    }
+
+    /// <summary>默认引擎下拉：只列启用项；选中的 Id 已失效时回落到「不使用」（= 百度）。</summary>
+    private void RefreshTranslationEngineCombo()
+    {
+        var selected = SettingsManager.Current.SelectedTranslationEngineId;
+        TranslationEngineCombo.Items.Clear();
+        TranslationEngineCombo.Items.Add(new ComboBoxItem { Content = "百度翻译", Tag = "" });
+        foreach (var engine in SettingsManager.Current.TranslationEngines.Where(e => e.Enabled))
+            TranslationEngineCombo.Items.Add(new ComboBoxItem { Content = engine.Name, Tag = engine.Id });
+        var match = TranslationEngineCombo.Items.OfType<ComboBoxItem>().FirstOrDefault(i => (string?)i.Tag == selected);
+        TranslationEngineCombo.SelectedItem = match ?? TranslationEngineCombo.Items[0];
+    }
+
+    private void TranslationEngine_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading) return;
+        SettingsManager.Current.SelectedTranslationEngineId =
+            (TranslationEngineCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
+        QueueSave();
+    }
+
+    private void AddTranslationEngine_Click(object sender, RoutedEventArgs e) => EditTranslationEngine(null);
+
+    private void EditTranslationEngine(UserAction? engine)
+    {
+        // 翻译引擎有自己的编辑器（必联网、沙箱无 Translation、无「上下文触发」），与 JS 脚本动作编辑器独立。
+        var editor = new TranslationEngineEditor(engine) { Owner = this };
+        if (editor.ShowDialog() != true) return;
+        var existing = SettingsManager.Current.TranslationEngines.FirstOrDefault(a => a.Id == editor.Action.Id);
+        if (existing == null) SettingsManager.Current.TranslationEngines.Add(editor.Action);
+        else
+        {
+            existing.Name = editor.Action.Name;
+            existing.Code = editor.Action.Code;
+            existing.ScriptFile = editor.Action.ScriptFile;
+            existing.AllowNetwork = editor.Action.AllowNetwork;
+        }
+        BuildTranslationEnginesList(); QueueSave();
+    }
+
     private void AddScriptAction_Click(object sender, RoutedEventArgs e) => EditScriptAction(null);
 
     private void EditScriptAction(UserAction? action)
@@ -213,7 +293,13 @@ public partial class SettingsWindow
         if (editor.ShowDialog() != true) return;
         var existing = SettingsManager.Current.UserActions.FirstOrDefault(a => a.Id == editor.Action.Id);
         if (existing == null) SettingsManager.Current.UserActions.Add(editor.Action);
-        else { existing.Name = editor.Action.Name; existing.Code = editor.Action.Code; existing.ContextRegex = editor.Action.ContextRegex; }
+        else
+        {
+            existing.Name = editor.Action.Name;
+            existing.Code = editor.Action.Code;
+            existing.ContextRegex = editor.Action.ContextRegex;
+            existing.AllowNetwork = editor.Action.AllowNetwork;
+        }
         BuildScriptActionsList(); QueueSave();
     }
 

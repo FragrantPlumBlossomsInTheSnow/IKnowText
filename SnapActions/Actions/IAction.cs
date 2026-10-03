@@ -1,3 +1,4 @@
+using System.Threading;
 using SnapActions.Detection;
 
 namespace SnapActions.Actions;
@@ -36,4 +37,13 @@ internal interface IOperationAction
 {
     Task<ActionResult> ExecuteAsync(
         string text, TextAnalysis analysis, Core.SelectionOperation operation);
+}
+
+/// <summary>
+/// 需要异步执行的动作（当前只有「允许访问网络」的 JS 脚本）。它不向目标注入输入，因此只需要选区
+/// 仍然有效，不需要 TryCommit；<paramref name="ct"/> 是本次执行的总时长上限（由调用方给出）。
+/// </summary>
+internal interface IAsyncAction
+{
+    Task<ActionResult> ExecuteAsync(string text, TextAnalysis analysis, CancellationToken ct);
 }

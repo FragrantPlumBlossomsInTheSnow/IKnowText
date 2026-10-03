@@ -1,7 +1,11 @@
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Jint;
 using Jint.Native;
 using Jint.Runtime;
+using SnapActions.Config;
+using SnapActions.Services;
 
 namespace SnapActions.Actions.UserActions;
 
@@ -34,10 +38,15 @@ internal sealed class JsScriptRunner
     private readonly Dictionary<string, CachedScript> _cache = new(StringComparer.Ordinal);
     private readonly List<string> _order = new();
 
-    private static Options BuildOptions() => new Options()
-        .TimeoutInterval(TimeSpan.FromSeconds(2))
+    private static Options BuildOptions(bool network = false) => new Options()
+        .TimeoutInterval(network ? NetworkTimeout : TimeSpan.FromSeconds(2))
         .MaxStatements(50_000)
         .LimitMemory(16_000_000);
+
+    /// <summary>联网脚本的 Jint 超时。spike 实测 <c>TimeoutInterval</c> 按「同步段」重置、且无法中断
+    /// 挂起的 await —— 它只拦得住死循环；单次运行真正的时长上限由外部 CancellationToken 负责，
+    /// 所以这里取得比单请求上限（8s）宽，避免合法请求在恢复时被误判超时。</summary>
+    internal static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// 注入沙箱 console 的宿主脚本。纯 JS，因此 Interop 关闭时同样可用，脚本也拿不到任何额外宿主能力；
@@ -92,6 +101,50 @@ internal sealed class JsScriptRunner
             }
         }
         """;
+
+    /// <summary>
+    /// 联网脚本额外注入的宿主 API（纯 JS 包装，不引入任何 .NET 对象）：
+    /// <c>http.get(url, options?)</c> / <c>http.post(url, body, options?)</c> → Promise&lt;{status, ok, headers, body}&gt;。
+    /// 宿主委托返回 Task，Jint 把它转成 Promise 由事件循环兑现（spike 实测）。
+    /// </summary>
+    private const string NetworkPrelude = """
+        async function __snapHttpRequest(method, url, body, options) {
+            return JSON.parse(await __snapHttp(JSON.stringify({
+                method: method,
+                url: String(url),
+                body: body === undefined || body === null ? '' : String(body),
+                options: options === undefined || options === null ? {} : options
+            })));
+        }
+        var http = {
+            get: function (url, options) { return __snapHttpRequest('GET', url, '', options); },
+            post: function (url, body, options) { return __snapHttpRequest('POST', url, body, options); }
+        };
+        """;
+
+    /// <summary>
+    /// <c>Translation(text, from?, to?)</c> → Promise&lt;string&gt;，执行设置里选中的自定义翻译引擎。
+    /// 单独一份 prelude：翻译引擎自己的脚本里<b>不</b>注入它，否则引擎调用 Translation 会自递归。
+    /// </summary>
+    private const string TranslationPrelude = """
+        async function Translation(text, from, to) {
+            return await __snapTranslate(JSON.stringify({
+                text: String(text),
+                from: from === undefined || from === null ? '' : String(from),
+                to: to === undefined || to === null ? '' : String(to)
+            }));
+        }
+        """;
+
+    /// <summary>联网脚本的沙箱附加项：语言上下文 + 是否暴露 <c>Translation</c>。</summary>
+    internal readonly record struct NetworkSandbox(
+        string SourceLanguage, string TargetLanguage, bool ExposeTranslation)
+    {
+        /// <summary>默认沙箱（普通联网脚本）：不限定语言、暴露 <c>Translation</c>。
+        /// 注意：结构体请勿用 <c>new NetworkSandbox()</c> 或 <c>default</c> 取默认值——
+        /// 前者会绑定到 struct 的隐式无参构造函数，等价于 default，把 <see cref="ExposeTranslation"/> 归零成 false。</summary>
+        internal static readonly NetworkSandbox Default = new("", "", true);
+    }
 
     /// <summary>
     /// 执行脚本。成功返回 true 且 result 是脚本返回值的文本形态（可能为空字符串）；
@@ -189,6 +242,131 @@ internal sealed class JsScriptRunner
                 ? "脚本错误: " + ex.Message
                 : "脚本执行失败: " + ex.Message);
         }
+    }
+
+    /// <summary>脚本执行结果（异步路径用；同步 <see cref="Run"/> 保留 out 参数以兼容既有调用）。</summary>
+    internal readonly record struct ScriptResult(bool Success, string? Text, string? Error);
+
+    /// <summary>
+    /// 异步执行入口：<paramref name="allowNetwork"/> 为 true 时按「允许访问网络」新建引擎并注入
+    /// <c>http</c> / <c>Translation</c>；否则原样走同步 <see cref="Run"/>（既有脚本零行为变化）。
+    /// 联网引擎<b>不进缓存</b>：宿主委托要绑定本次运行的请求预算与取消令牌，缓存会把它们变成陈旧状态。
+    /// </summary>
+    internal async Task<ScriptResult> RunAsync(string code, string text, bool allowNetwork,
+        List<string>? logs = null, CancellationToken ct = default, NetworkSandbox? sandbox = null)
+    {
+        if (!allowNetwork)
+        {
+            var ok = Run(code, text, out var result, out var error, logs);
+            return new ScriptResult(ok, result, error);
+        }
+        return await RunNetworkAsync(code, text, logs, ct, sandbox ?? NetworkSandbox.Default);
+    }
+
+    private async Task<ScriptResult> RunNetworkAsync(
+        string code, string text, List<string>? logs, CancellationToken ct, NetworkSandbox sandbox)
+    {
+        var options = BuildOptions(network: true);
+        options.Strict = true;
+        options.Interop.Enabled = false; // 沙箱：脚本无法触达任何 .NET 对象
+        var engine = new Engine(options);
+        try
+        {
+            engine.SetValue("__snapMaxLogs", MaxLogEntries);
+            engine.SetValue("__snapMaxLogChars", MaxLogEntryChars);
+            // 语言上下文：只放字符串（原始值），脚本按需读取。
+            engine.SetValue("SNAP_SOURCE_LANGUAGE", sandbox.SourceLanguage);
+            engine.SetValue("SNAP_TARGET_LANGUAGE", sandbox.TargetLanguage);
+            engine.Evaluate(ConsolePrelude);
+            // 抓文本化函数到宿主手里（同同步路径）：脚本之后改写这个全局也影响不到结果转换。
+            var resultText = engine.GetValue("__snapResultText");
+            // 只注入委托，绝不注入 CLR 对象：spike 实测 Interop 关闭也不拦 SetValue 进去的对象成员，
+            // 所以沙箱边界一律「JSON 字符串进、字符串/Promise 出」。
+            var bridge = new ScriptHttpBridge(ct);
+            engine.SetValue("__snapHttp", new Func<string, Task<string>>(bridge.SendAsync));
+            engine.Evaluate(NetworkPrelude);
+            if (sandbox.ExposeTranslation)
+            {
+                engine.SetValue("__snapTranslate", new Func<string, Task<string>>(json => TranslateForSandboxAsync(json, ct)));
+                engine.Evaluate(TranslationPrelude);
+            }
+            try
+            {
+                engine.Evaluate(code);
+            }
+            catch
+            {
+                return new ScriptResult(false, null, "脚本解析失败");
+            }
+            if (!TryResetAndCheckEntryPoint(engine))
+                return new ScriptResult(false, null,
+                    "脚本未定义入口函数 JSAction(text)，请检查函数名（必须叫 JSAction）。");
+            var v = await engine.InvokeAsync("JSAction", ct, new object[] { text });
+            CollectLogs(engine, logs);
+            return ToResult(engine, resultText, v);
+        }
+        catch (OperationCanceledException)
+        {
+            // 外部取消令牌到点：这是单次运行真正的时长上限（TimeoutInterval 拦不住挂起的 await）。
+            CollectLogs(engine, logs);
+            return new ScriptResult(false, null, $"脚本执行超时（超过 {NetworkTimeout.TotalSeconds:0} 秒）");
+        }
+        catch (Exception ex)
+        {
+            CollectLogs(engine, logs);
+            return new ScriptResult(false, null, ex is JintException
+                ? "脚本错误: " + ex.Message
+                : "脚本执行失败: " + ex.Message);
+        }
+        finally
+        {
+            engine.Dispose();
+        }
+    }
+
+    /// <summary>沙箱 Translation 宿主委托：解析 {text,from,to}，执行设置里选中的自定义翻译引擎。
+    /// 异常由 Jint 转成 JS 异常，脚本可 try/catch；未捕获时归为「脚本错误」。</summary>
+    private static async Task<string> TranslateForSandboxAsync(string requestJson, CancellationToken ct)
+    {
+        string text, from, to;
+        try
+        {
+            using var doc = JsonDocument.Parse(requestJson);
+            var root = doc.RootElement;
+            text = ReadJsonString(root, "text");
+            from = ReadJsonString(root, "from");
+            to = ReadJsonString(root, "to");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Translation 参数无法解析：" + ex.Message);
+        }
+        if (text.Length == 0) throw new InvalidOperationException("Translation 的文本为空");
+        return await TranslationEngineService.RunSelectedAsync(text, from, to, ct);
+    }
+
+    private static string ReadJsonString(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString() ?? "" : "";
+
+    /// <summary>把 Jint 的返回值转成结果文本（与同步路径同一套语义：字符串直通，数组/对象转 JSON）。</summary>
+    private static ScriptResult ToResult(Engine engine, JsValue resultText, JsValue v)
+    {
+        if (v.IsUndefined() || v.IsNull())
+            return new ScriptResult(false, null, "脚本未返回结果（JSAction 返回了 undefined/null）");
+        string str;
+        if (v.IsString())
+        {
+            str = v.AsString();
+        }
+        else
+        {
+            try { str = engine.Invoke(resultText, JsValue.Undefined, [v]).ToString() ?? ""; }
+            catch { str = v.ToString() ?? ""; }
+        }
+        return str.Length > MaxResultChars
+            ? new ScriptResult(false, null, $"输出超过 {MaxResultChars / 1024}K 字符")
+            : new ScriptResult(true, str, null);
     }
 
     /// <summary>

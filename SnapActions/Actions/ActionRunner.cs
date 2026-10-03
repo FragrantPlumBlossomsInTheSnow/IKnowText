@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Windows;
 using SnapActions.Core;
 using SnapActions.Helpers;
@@ -24,6 +25,10 @@ internal static class ActionRunner
                 if (!selection.CanReplace || !operation.TryClaim()) return Cancelled();
                 return await targeted.ExecuteAsync(selection.Text, selection.Analysis, operation);
             }
+            // 异步动作（联网脚本）：耗时长且不向目标注入输入，因此不套 TryCommit —— 同步提交会把
+            // 整个 HTTP 往返压在 UI 线程上。选区有效性由上面的 CanUseSelectionAsync 前置保证。
+            if (action is IAsyncAction asyncAction)
+                return await asyncAction.ExecuteAsync(selection.Text, selection.Analysis, CancellationToken.None);
             ActionResult? result = null;
             return operation.TryCommit(() => { result = action.Execute(selection.Text, selection.Analysis); return true; })
                 ? result! : Cancelled();

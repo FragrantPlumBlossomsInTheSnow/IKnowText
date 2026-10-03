@@ -14,9 +14,11 @@ public class TranslateAction : IAction
     // PlainText only — URLs, JSON, UUIDs, JWTs etc. aren't translatable prose, and offering
     // Translate for every short selection just crowded the toolbar for typed selections.
     // (Dictionary applies the same gate.)
+    // 长度门槛只在走百度时生效：选了自定义翻译引擎就交给引擎自己判断（它可能能处理任意长度）。
     public bool CanExecute(string text, TextAnalysis analysis) =>
-        Services.BaiduTranslator.CanTranslate(text)
-        && analysis.Type == TextType.PlainText;
+        !string.IsNullOrWhiteSpace(text)
+        && analysis.Type == TextType.PlainText
+        && (Services.TranslationEngineService.HasSelectedEngine() || Services.BaiduTranslator.CanTranslate(text));
 
     public ActionResult Execute(string text, TextAnalysis analysis)
     {

@@ -171,6 +171,10 @@ public class UserAction
     /// 文本转换动作。非法正则/回溯超时按「不命中」处理（见 ContextTriggerRegex）。</summary>
     public string ContextRegex { get; set; } = "";
 
+    /// <summary>允许该脚本访问网络：勾选后沙箱注入 Translation 与 http，并在执行前触发在线查询同意门。
+    /// 默认 false —— 未勾选的脚本与以前完全一致，拿不到任何网络能力（Translation/http 均不存在）。</summary>
+    public bool AllowNetwork { get; set; } = false;
+
     public bool Enabled { get; set; } = true;
 }
 
@@ -266,6 +270,13 @@ public class AppSettings
 
     /// <summary>DPAPI-protected, base64-encoded Baidu AppID + secret (encrypted at rest; never plaintext).</summary>
     public string BaiduCredentialsBlob { get; set; } = "";
+
+    /// <summary>自定义翻译引擎：与「自定义 JS 脚本动作」同构的 JS 脚本（入口 JSAction(text)，返回值即译文）。
+    /// 内置「翻译」动作优先用它；未选中/未启用时回退百度翻译。</summary>
+    public List<UserAction> TranslationEngines { get; set; } = [];
+
+    /// <summary>默认使用的翻译引擎 Id；空 = 不使用自定义引擎（翻译回退百度）。</summary>
+    public string SelectedTranslationEngineId { get; set; } = "";
 
     public List<SearchEngine> SearchEngines { get; set; } = GetDefaultEngines();
 

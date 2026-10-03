@@ -1,3 +1,4 @@
+using System.Threading;
 using SnapActions.Config;
 using SnapActions.Detection;
 
@@ -8,8 +9,10 @@ namespace SnapActions.Actions.UserActions;
 /// 返回结果文本，走现有 ResultPopup 复制/替换管线。Category=Transform 与内置文本转换一致；
 /// IsPreviewSafe=false（脚本不可信，悬停不执行）。
 /// 沙箱 console 的输出不传 logs（静默丢弃），需要调试时在编辑器「试跑」里看。
+/// 勾选「允许访问网络」的脚本改走 <see cref="IAsyncAction"/>（注入 http / Translation，先过同意门）；
+/// 未勾选则完全沿用原有同步路径。
 /// </summary>
-public sealed class UserScriptAction(UserAction def) : IAction  
+public sealed class UserScriptAction(UserAction def) : IAction, IAsyncAction
 {
     public string Id => $"user_{def.Id}";
     public string Name => def.Name;
@@ -36,8 +39,31 @@ public sealed class UserScriptAction(UserAction def) : IAction
         var code = ScriptActionStorage.LoadCode(def);
         if (code == null)
             return new ActionResult(false, Message: "脚本文件缺失：" + def.ScriptFile);
+        // 联网脚本必须走异步路径（ActionRunner 优先分派 IAsyncAction）；同步入口只兜非联网脚本，
+        // 免得在 UI 线程上阻塞住 HTTP 往返。
+        if (def.AllowNetwork)
+            return new ActionResult(false, Message: "该脚本已允许访问网络，请通过工具栏动作执行。");
         if (JsScriptRunner.Shared.Run(code, text, out var result, out var error))
             return new ActionResult(true, result, Name);
         return new ActionResult(false, Message: error);
+    }
+
+    async Task<ActionResult> IAsyncAction.ExecuteAsync(string text, TextAnalysis analysis, CancellationToken ct)
+    {
+        var code = ScriptActionStorage.LoadCode(def);
+        if (code == null)
+            return new ActionResult(false, Message: "脚本文件缺失：" + def.ScriptFile);
+        if (!def.AllowNetwork)
+            return Execute(text, analysis); // 非联网脚本：完全沿用原有同步路径
+        // 同意门：必须在发起任何请求之前、且在 UI 线程上完成（await 之后续体已在线程池线程）。
+        if (!UI.ResultPopup.EnsureOnlineLookupConsent())
+            return new ActionResult(false, Message: "已拒绝在线查询授权。");
+        // 总时长上限：Jint 的 TimeoutInterval 拦不住挂起的 await，真正的边界是这个令牌。
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(JsScriptRunner.NetworkTimeout);
+        var run = await JsScriptRunner.Shared.RunAsync(code, text, allowNetwork: true, logs: null, cts.Token);
+        return run.Success
+            ? new ActionResult(true, run.Text, Name)
+            : new ActionResult(false, Message: run.Error);
     }
 }

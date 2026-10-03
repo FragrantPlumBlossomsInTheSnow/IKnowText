@@ -258,8 +258,56 @@ internal static class PackageSelfTest
             Require(triggerHint.Text.Contains("无效"), "Context trigger hint did not flag an invalid regex");
             triggerBox.Text = "^h"; // 截图停在「有效且命中」状态
             Render(scriptEditor, "script-editor", 620, 860);
+            // 「允许此脚本访问网络」开关：勾选态 → 提示文案切换。临时打开在线查询开关，
+            // 避免勾选时弹出同意框卡住自检；自检本身不发任何网络请求。
+            var allowNetworkCheck = (System.Windows.Controls.CheckBox)GetField(scriptEditor, "AllowNetworkCheck");
+            var sandboxHint = (TextBlock)GetField(scriptEditor, "SandboxHintText");
+            var networkHint = (TextBlock)GetField(scriptEditor, "NetworkHintText");
+            var savedOnlineLookups = SettingsManager.Current.AllowOnlineLookups;
+            try
+            {
+                SettingsManager.Current.AllowOnlineLookups = true;
+                allowNetworkCheck.IsChecked = true;
+                Require(networkHint.Visibility == Visibility.Visible,
+                    "Network hint stayed hidden when network access is on");
+                Require(sandboxHint.Text.Contains("允许网络"), "Sandbox hint did not switch to the network wording");
+                allowNetworkCheck.IsChecked = false;
+                Require(networkHint.Visibility == Visibility.Collapsed,
+                    "Network hint stayed visible when network access is off");
+                Require(sandboxHint.Text.Contains("无法访问文件/网络"),
+                    "Sandbox hint did not switch back after turning network access off");
+            }
+            finally { SettingsManager.Current.AllowOnlineLookups = savedOnlineLookups; }
             scriptEditor.Close();
             checks.Add("Script editor console capture and context-trigger feedback");
+
+            // 自定义翻译引擎编辑器（与 JS 脚本动作编辑器各自独立的 xaml+cs）：必定是联网沙箱，且沙箱
+            // 不注入 Translation（否则引擎会递归调用自己）。试跑一律防抖，这里直接调 PreviewAsync 断言。
+            var engineEditor = new TranslationEngineEditor(null);
+            // 冻结防抖试跑：构造函数与赋值都会排一次 600ms 后的自动试跑，留着会盖掉断言与截图。
+            ((System.Windows.Threading.DispatcherTimer)GetField(engineEditor, "_previewDebounce")).Stop();
+            SetField(engineEditor, "_loading", true);
+            var enginePreviewBox = (TextBox)GetField(engineEditor, "PreviewBox");
+            var engineLookups = SettingsManager.Current.AllowOnlineLookups;
+            try
+            {
+                SettingsManager.Current.AllowOnlineLookups = true;
+                ((TextBox)GetField(engineEditor, "CodeBox")).Text =
+                    "async function JSAction(text) { return SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE + ':' + text.toUpperCase() + ':' + typeof Translation; }";
+                ((TextBox)GetField(engineEditor, "SampleBox")).Text = "hey";
+                var previewTask = (Task)typeof(TranslationEngineEditor)
+                    .GetMethod("PreviewAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                    .Invoke(engineEditor, null)!;
+                await previewTask;
+                Require(enginePreviewBox.Text.Contains("HEY"), "Translation engine preview did not return the script result");
+                Require(enginePreviewBox.Text.EndsWith(":undefined", StringComparison.Ordinal),
+                    "Translation engine preview sandbox exposed Translation (would recurse into the engine)");
+                Require(engineEditor.Title.Contains("翻译引擎"), "Translation engine editor title is wrong");
+                Render(engineEditor, "translation-engine-editor", 620, 780);
+            }
+            finally { SettingsManager.Current.AllowOnlineLookups = engineLookups; }
+            engineEditor.Close();
+            checks.Add("Translation engine editor (standalone) previews in a network sandbox without Translation");
 
             var registry = new ActionRegistry();
 
