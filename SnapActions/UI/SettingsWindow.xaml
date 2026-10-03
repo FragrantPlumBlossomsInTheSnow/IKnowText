@@ -4,7 +4,7 @@
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:modern="http://schemas.inkore.net/lib/ui/wpf/modern"
                  xmlns:local="clr-namespace:SnapActions.UI"
-                 FontSize="13" Title="SnapActions 设置" Width="740" Height="740" MinWidth="620" MinHeight="500"
+                 FontSize="13" Title="IKnowText 设置" Width="740" Height="740" MinWidth="620" MinHeight="500"
                  WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
                  ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica"
                  Background="{DynamicResource ApplicationBackgroundBrush}"
@@ -130,7 +130,7 @@
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                    <TextBlock Text="SnapActions 设置" FontSize="22" FontWeight="SemiBold"
+                    <TextBlock Text="IKnowText 设置" FontSize="22" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                 </StackPanel>
             </DockPanel>
@@ -259,7 +259,7 @@
                                     <Border Style="{StaticResource SettingDivider}" />
                                     <!-- <CheckBox x:Name="CaptureOnMouseSelectionCheck" -->
                                     <!--           Content="选择文本时自动显示工具栏" -->
-                                    <!--           ToolTip="自动选择捕获使用浏览器伴侣或UI自动化，从不复制或触摸剪贴板。如果应用程序没有显示所选文本，请使用下面的Ctrl+C触发器。" -->
+                                    <!--           ToolTip="自动选择捕获使用 UI 自动化，从不复制或触摸剪贴板。如果应用程序没有显示所选文本，请使用下面的 Ctrl+C 触发器。" -->
                                     <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
                                     <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
                                     <!-- <Border Style="{StaticResource SettingDivider}" /> -->
@@ -716,48 +716,6 @@
 
                         </StackPanel>
                     </ScrollViewer>
-                    <!-- <TabItem Header="浏览器"> -->
-                    <!--     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"> -->
-                    <!--         <StackPanel Margin="16"> -->
-                    <!--             <TextBlock Text="浏览器伴侣" Style="{StaticResource SettingsHeading}" /> -->
-                    <!--             <TextBlock TextWrapping="Wrap" -->
-                    <!--                        Text="读取浏览器的实际选择内容，包括混合的阿拉伯语和英语文本。只有当您选择文本时，配套工具才会读取活动标签页的内容。" /> -->
-                    <!--             <TextBlock -->
-                    <!--                 Text="1.将SnapActions.exe及其浏览器扩展文件夹放在一个永久位置。" -->
-                    <!--                 TextWrapping="Wrap" Margin="0,14,0,6" /> -->
-                    <!--             <WrapPanel> -->
-                    <!--                 <ComboBox x:Name="BrowserCombo" Width="130" SelectedIndex="0" -->
-                    <!--                           AutomationProperties.Name="Browser" SelectionChanged="Browser_Changed"> -->
-                    <!--                     <ComboBoxItem Content="Brave" /> -->
-                    <!--                     <ComboBoxItem Content="Chrome" /> -->
-                    <!--                     <ComboBoxItem Content="Edge" /> -->
-                    <!--                 </ComboBox> -->
-                    <!--                 <ui:Button Content="注册此副本" Click="RegisterBrowser_Click" Padding="12,4" -->
-                    <!--                         Margin="8,0,0,0" /> -->
-                    <!--             </WrapPanel> -->
-                    <!--             <TextBlock -->
-                    <!--                 Text="2.打开浏览器的扩展页面，启用开发人员模式，然后选择加载解包。选择此应用程序旁边的浏览器扩展文件夹；下面的按钮为您打开它。更新SnapActions后重新加载扩展。" -->
-                    <!--                 TextWrapping="Wrap" Margin="0,14,0,6" /> -->
-                    <!--             <ui:Button Content="打开扩展文件夹" Click="OpenExtension_Click" HorizontalAlignment="Left" -->
-                    <!--                     Margin="0,6" Padding="12,4" /> -->
-                    <!--             <TextBlock -->
-                    <!--                 Text="3.在该浏览器中打开选择示例。选择普通文本、混合方向文本和编辑器内的文本。工具栏应显示确切的选择。" -->
-                    <!--                 TextWrapping="Wrap" Margin="0,14,0,6" /> -->
-                    <!--             <ui:Button Content="打开选择示例" Click="OpenBrowserSample_Click" -->
-                    <!--                     HorizontalAlignment="Left" Padding="12,4" /> -->
-                    <!--             <TextBlock Text="连接与捕获健康" Style="{StaticResource SettingsHeading}" /> -->
-                    <!--             <TextBlock x:Name="BrowserStatusText" TextWrapping="Wrap" Margin="0,0,0,8" -->
-                    <!--                        AutomationProperties.LiveSetting="Polite" /> -->
-                    <!--             <ui:TextBox x:Name="DiagnosticsBox" IsReadOnly="True" TextWrapping="Wrap" Padding="8" -->
-                    <!--                      MinHeight="100" AutomationProperties.Name="Capture health and timing" /> -->
-                    <!--             <ui:Button Content="刷新运行状况" Click="RefreshBrowser_Click" HorizontalAlignment="Left" -->
-                    <!--                     Margin="0,6" Padding="12,4" /> -->
-                    <!--             <TextBlock FontSize="12" TextWrapping="Wrap" -->
-                    <!--                        Text="时间是本课程的滚动示例。渲染就绪计时不包括屏幕绘制。诊断不包含所选文本。仅凭连接并不能证明页面会公开其选择。" /> -->
-                    <!-- -->
-                    <!--         </StackPanel> -->
-                    <!--     </ScrollViewer> -->
-                    <!-- </TabItem> -->
                 </Grid>
             </Grid>
             <Grid Grid.Row="2" Margin="0,16,0,0">

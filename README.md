@@ -1,11 +1,11 @@
-# IKonwText
+# IKnowText
 
 一个 Windows 划词工具栏：选中文本即出现，提供复制、翻译、文本转换、编码/解码、网页搜索等动作。
 本仓库是**独立项目**（非 GitHub fork），基于 [SnapActions](https://github.com/roko-tech/SnapActions) v2.4.5 改造。
 
 A Windows selection toolbar that appears when you select text — an **independent project** (not a GitHub fork) based on SnapActions v2.4.5.
 
-仓库 Repository：<https://github.com/XuejiMeixiangli/IKonwText>
+仓库 Repository：<https://github.com/XuejiMeixiangli/IKnowText>
 
 [中文](#中文) · [English](#english)
 
@@ -58,10 +58,10 @@ A Windows selection toolbar that appears when you select text — an **independe
 获取源码后自行打包（完整打包与校验：`SnapActions\build.bat`，产物在 `artifacts\`；快速发布单文件：`SnapActions\publish.bat`）：
 
 ```bat
-git clone https://github.com/XuejiMeixiangli/IKonwText.git
+git clone https://github.com/XuejiMeixiangli/IKnowText.git
 ```
 
-1. 取发布目录中的 `SnapActions.exe`（单文件）与 `licenses\`，放在固定位置
+1. 取发布目录中的 `IKnowText.exe`（单文件）与 `licenses\`，放在固定位置
 2. 直接运行：托盘出现图标，单击打开设置
 3. 选中任意文本 → 工具栏出现 → 选择动作
 
@@ -135,7 +135,7 @@ async function JSAction(text) {
 
 ### 设置与数据目录
 
-数据目录：`%APPDATA%\SnapActions`
+数据目录：`%APPDATA%\IKnowText`（改名前的 `%APPDATA%\SnapActions` 会在首次启动时把 `settings.json` 与 `scripts\` 自动搬过来，旧目录保留不删）
 
 - `settings.json` — 全部设置（含加密后的翻译凭据）
 
@@ -156,7 +156,7 @@ dotnet build SnapActions\SnapActions.csproj -c Release
 :: 单元测试
 dotnet test SnapActions.Tests\SnapActions.Tests.csproj -c Release
 
-:: 快速发布单文件 → SnapActions\bin\publish\SnapActions.exe
+:: 快速发布单文件 → SnapActions\bin\publish\IKnowText.exe
 SnapActions\publish.bat
 
 :: 完整打包与校验（调用 tools\package.py，产物在 artifacts\，含 ZIP 与校验和）
@@ -167,12 +167,12 @@ UI 自检（会渲染各界面留档、校验交互链路）：
 
 ```bat
 set SNAPACTIONS_DATA_DIR=%TEMP%\sa-selftest
-SnapActions.exe --self-test
+IKnowText.exe --self-test
 ```
 
 ### 与上游的差异
 
-| 方面    | 上游 SnapActions               | IKonwText                       |
+| 方面    | 上游 SnapActions               | IKnowText                       |
 | ----- | ---------------------------- | ------------------------------- |
 | 翻译    | Google 翻译 + WebView2         | 百度翻译 API + 自绘弹层（无需 WebView2）    |
 | 界面    | 英文                           | 中文界面，自绘 Fluent 外观（主题 / 图标 / 动效） |
@@ -204,7 +204,7 @@ MIT License，见 [LICENSE](LICENSE)；版权归上游作者 roko-tech 所有。
 
 A Windows toolbar that appears when you select text, offering copy, translate, transforms, encode/decode and web search. Results and previews stay close to your selection.
 
-IKonwText is an **independent project** (not a GitHub fork) based on [SnapActions](https://github.com/roko-tech/SnapActions) v2.4.5. Compared with upstream it localizes the UI into Chinese and redraws the look, replaces the Google/WebView2 translation with the Baidu Translate API and a self-drawn popup (**no WebView2 required**), and adds user-defined JavaScript actions.
+IKnowText is an **independent project** (not a GitHub fork) based on [SnapActions](https://github.com/roko-tech/SnapActions) v2.4.5. Compared with upstream it localizes the UI into Chinese and redraws the look, replaces the Google/WebView2 translation with the Baidu Translate API and a self-drawn popup (**no WebView2 required**), and adds user-defined JavaScript actions.
 
 ### Highlights
 
@@ -230,7 +230,7 @@ IKonwText is an **independent project** (not a GitHub fork) based on [SnapAction
 
 ### Build and run
 
-- Source: `git clone https://github.com/XuejiMeixiangli/IKonwText.git`
+- Source: `git clone https://github.com/XuejiMeixiangli/IKnowText.git`
 
 - .NET SDK 10.0.400 (pinned by `global.json`)
 
@@ -240,11 +240,11 @@ IKonwText is an **independent project** (not a GitHub fork) based on [SnapAction
 
 - Quick single-file publish: `SnapActions\publish.bat`; full package verification: `SnapActions\build.bat`
 
-- UI self-test: `SnapActions.exe --self-test` with `SNAPACTIONS_DATA_DIR` pointing at an isolated folder
+- UI self-test: `IKnowText.exe --self-test` with `SNAPACTIONS_DATA_DIR` pointing at an isolated folder
 
 ### Data and privacy
 
-Settings, logs and scripts live in `%APPDATA%\SnapActions` (override with `SNAPACTIONS_DATA_DIR`). Text processing is local; there is no telemetry and no auto-updater. Online lookups are opt-in and send only the documented payloads — the selected text to Baidu Translate and a single word to dictionaryapi.dev.
+Settings, logs and scripts live in `%APPDATA%\IKnowText` (the pre-rename `%APPDATA%\SnapActions` is migrated on first launch; override with `SNAPACTIONS_DATA_DIR`). Text processing is local; there is no telemetry and no auto-updater. Online lookups are opt-in and send only the documented payloads — the selected text to Baidu Translate and a single word to dictionaryapi.dev.
 
 ### Licence
 

@@ -26,7 +26,12 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if os.name != "nt":
-        parser.error("SnapActions packaging and native checks require Windows.")
+        parser.error("IKnowText packaging and native checks require Windows.")
+    # 应用名/exe 名从 csproj 读（AssemblyName=IKnowText，C# 命名空间仍是 SnapActions），
+    # 免得改 AssemblyName 之后这里还去找 SnapActions.exe。
+    project = ET.parse(ROOT / "SnapActions" / "SnapActions.csproj").getroot()
+    assembly_name = project.findtext(".//AssemblyName") or "IKnowText"
+    version = project.findtext(".//Version")
     output = (args.output or ROOT / "artifacts" / datetime.now(timezone.utc).strftime("package-%Y%m%d-%H%M%S")).resolve()
     if output.exists() and any(output.iterdir()):
         parser.error("Output must be a new or empty directory; existing packages are never overwritten.")
@@ -42,14 +47,14 @@ def main():
         "-p:DebugType=none", "-p:RestoreLockedMode=true", "-warnaserror", "-o", str(publish))
     environment = os.environ.copy()
     environment["SNAPACTIONS_DATA_DIR"] = str(receipt / "ui")
-    run(str(publish / "SnapActions.exe"), "--self-test", env=environment, timeout=60)
+    run(str(publish / f"{assembly_name}.exe"), "--self-test", env=environment, timeout=60)
     result = json.loads((receipt / "ui" / "self-test.json").read_text(encoding="utf-8"))
     if not result["passed"]:
         raise RuntimeError(result["failure"])
     files = sorted(p for p in publish.rglob("*") if p.is_file())
     (publish / "SHA256SUMS").write_text("".join(f"{checksum(p)}  {p.relative_to(publish).as_posix()}\n" for p in files), encoding="utf-8")
-    version = ET.parse(ROOT / "SnapActions" / "SnapActions.csproj").findtext(".//Version")
-    archive = output / f"SnapActions-{version}-win-x64.zip"
+    version = project.findtext(".//Version")
+    archive = output / f"{assembly_name}-{version}-win-x64.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as package:
         for path in sorted(p for p in publish.rglob("*") if p.is_file()):
             package.write(path, path.relative_to(publish))

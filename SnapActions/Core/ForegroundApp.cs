@@ -9,6 +9,16 @@ public static class ForegroundApp
 {
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+    /// <summary>
+    ///     本进程的可执行文件名（不含扩展名）。用来把「自己」从应用列表/排除判断里剔掉：
+    ///     不再硬编码应用名，改 exe 名后这些自识别逻辑不会失效。
+    /// </summary>
+    public static readonly string OwnProcessName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "IKnowText");
+
+    /// <summary>当前进程名是否等于本进程（大小写不敏感）。</summary>
+    public static bool IsOwnProcess(string? processName) =>
+        processName != null && processName.Equals(OwnProcessName, StringComparison.OrdinalIgnoreCase);
+
     public static string? GetActiveProcessName()
     {
         // Avoid Process.GetProcessById here — it allocates a Process object and reads the full
@@ -53,7 +63,7 @@ public static class ForegroundApp
     {
         var name = GetActiveProcessName();
         if (name == null) return false;
-        if (name.Equals("SnapActions", StringComparison.OrdinalIgnoreCase)) return true;
+        if (IsOwnProcess(name)) return true;
         foreach (var ex in exclusionList)
             if (name.Equals(ex, StringComparison.OrdinalIgnoreCase)) return true;
         return false;

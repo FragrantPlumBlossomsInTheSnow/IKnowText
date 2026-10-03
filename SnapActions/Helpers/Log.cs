@@ -37,7 +37,7 @@ public static class Log
             foreach (var line in _queue.GetConsumingEnumerable())
                 WriteToFile(line);
         })
-        { IsBackground = true, Name = "SnapActions.Log" };
+        { IsBackground = true, Name = "IKnowText.Log" };
         t.Start();
         return t;
     }

@@ -4,7 +4,7 @@
         xmlns:modern="http://schemas.inkore.net/lib/ui/wpf/modern"
         xmlns:local="clr-namespace:SnapActions.UI"
         xmlns:actions="clr-namespace:SnapActions.Actions"
-        Title="SnapActions toolbar"
+        Title="IKnowText toolbar"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"

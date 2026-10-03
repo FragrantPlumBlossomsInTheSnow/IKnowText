@@ -1,4 +1,4 @@
-# SnapActions user guide
+# IKnowText user guide
 
 [Back to the overview](../README.md)
 
@@ -31,7 +31,7 @@ Select  a sentence                    →  Translate, Search
 
 Clicking an action that produces text opens a result popup with **复制结果** (Copy result) and **替换原文** (Replace original). Copy revalidates the captured selection before it writes to the clipboard. Replace snapshots the clipboard, re-checks that the original target is still focused, and injects a paste over the selection; a busy clipboard, a moved focus or an uncertain target cancels the replacement and leaves a retry available. The source excerpt stays beside the result, and when the target application refuses a replacement, **Copy result** still completes the job.
 
-Automatic highlight capture is clipboard-free and is on by default. Selections are read from the focused element's accessibility tree, with a Chromium geometry fallback for same-line drags; only when that yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, restoring the previous clipboard afterwards. For unsupported surfaces, turn on **按 Ctrl+C 时显示工具栏** (Show the toolbar when I press Ctrl+C) and copy explicitly to summon the toolbar there.
+Automatic highlight capture is clipboard-free and is on by default. Selections are read from the focused element's accessibility tree, with a Chromium geometry fallback for same-line drags; only when that yields no selection at all does IKnowText fall back to a synthetic Ctrl+Insert copy, restoring the previous clipboard afterwards. For unsupported surfaces, turn on **按 Ctrl+C 时显示工具栏** (Show the toolbar when I press Ctrl+C) and copy explicitly to summon the toolbar there.
 
 To bring up a paste menu without an existing selection, **long-press** the left mouse button (500 ms by default) inside any text input. The **粘贴为** (Paste as) menu applies transforms and encoders to the clipboard text and pastes the result back. The trigger itself is a setting (`pasteModeTrigger`: long-press, double-click on an empty editable field, or off) that the Settings window does not currently expose.
 
@@ -64,9 +64,9 @@ Detection runs entirely in-process, without network calls.
 
 ## Inline popups
 
-Translate and Currency Converter show their results inside SnapActions. The first time an action needs a third-party service, SnapActions asks for permission before anything leaves the machine; you can change that afterwards with **允许在线查找（翻译）** (Allow online lookups) under Settings → 通用 → 工具栏行为.
+Translate and Currency Converter show their results inside IKnowText. The first time an action needs a third-party service, IKnowText asks for permission before anything leaves the machine; you can change that afterwards with **允许在线查找（翻译）** (Allow online lookups) under Settings → 通用 → 工具栏行为.
 
-**翻译 (Translate)** sends the selected text to the Baidu Translate open-platform API (`nmt` model) and shows the returned plain text in a SnapActions popup. It never opens a browser tab, an embedded browser or a web view.
+**翻译 (Translate)** sends the selected text to the Baidu Translate open-platform API (`nmt` model) and shows the returned plain text in a IKnowText popup. It never opens a browser tab, an embedded browser or a web view.
 
 - Fill in the Baidu **APP ID** and **密钥** (secret) under Settings → 翻译 → 百度翻译. They auto-save, are encrypted with Windows DPAPI for the current user, and translation reports a configuration error until both are present.
 - Translate is offered only for plain-text selections — URLs, JSON, UUIDs, JWTs and other typed values do not get the action. On the Baidu path the selection is limited to **2000 UTF-8 bytes** (bytes, not characters); with a custom translation engine selected that byte cap no longer applies, because the engine decides what it can handle.
@@ -93,7 +93,7 @@ URL · Base64 · HTML · Hex · ROT13 · MD5 / SHA-1 / SHA-256 / SHA-512 (under 
 4 built-in engines — Google, Bing, BiliBili and GitHub — all enabled by default; toggle them under Settings → 动作 → 启用搜索.
 
 - **Custom engines** via URL templates: `{0}` is the URL-encoded query. Add a name and URL under Settings → 动作 → 添加自定义搜索 and delete custom engines again from the same list.
-- Both built-in and custom engines hand the query to your default browser; SnapActions itself never makes the request.
+- Both built-in and custom engines hand the query to your default browser; IKnowText itself never makes the request.
 
 ## Customize
 
@@ -136,11 +136,11 @@ URL · Base64 · HTML · Hex · ROT13 · MD5 / SHA-1 / SHA-256 / SHA-512 (under 
 | 排除的应用程序 Excluded apps | Process names, one per line | PotPlayerMini64, PotPlayerMini |
 | 目标货币 Target currency | Edited in settings.json | USD |
 
-Settings live at `%AppData%\SnapActions\settings.json`. Writes are crash-safe (serialize to `settings.json.tmp`, then atomic rename) so a process crash mid-write can't blank the file; the write is not fsync'd, so a hard power loss between the rename and the disk flush can still resurrect the previous file content. If the file gets corrupted on load it's renamed to `settings.json.broken-<timestamp>` and defaults are used — never silent data loss. The 5 most recent backups are kept.
+Settings live at `%AppData%\IKnowText\settings.json`. Writes are crash-safe (serialize to `settings.json.tmp`, then atomic rename) so a process crash mid-write can't blank the file; the write is not fsync'd, so a hard power loss between the rename and the disk flush can still resurrect the previous file content. If the file gets corrupted on load it's renamed to `settings.json.broken-<timestamp>` and defaults are used — never silent data loss. The 5 most recent backups are kept.
 
 A few behaviors have no Settings control and are edited in `settings.json`: the paste-mode trigger (`pasteModeTrigger`, default `longpress`), the long-press duration (`longPressDuration`, 500 ms), automatic mouse-selection capture (`captureOnMouseSelection`, on), clipboard restoration after a copy (`restoreClipboardAfterAction`, off), the global search-language filter (`searchLanguage`, empty = no filter) and the per-engine language flag (`useLanguageFilter`).
 
-Logs go to `%AppData%\SnapActions\logs\YYYY-MM-DD.log`, capped at 10 MB per file (older content rotates to `.1`, `.2`, …) with files older than 7 days pruned at most once every 24 hours of process uptime.
+Logs go to `%AppData%\IKnowText\logs\YYYY-MM-DD.log`, capped at 10 MB per file (older content rotates to `.1`, `.2`, …) with files older than 7 days pruned at most once every 24 hours of process uptime.
 
 ## Local tools and customization
 
@@ -153,7 +153,7 @@ Logs go to `%AppData%\SnapActions\logs\YYYY-MM-DD.log`, capped at 10 MB per file
 Settings → 自定义 → JS 脚本动作 → 添加脚本动作 adds your own text action. Each script defines a global `JSAction(text)`: the selection is passed in and the return value is the result text (a string is used verbatim; arrays and plain objects are serialized as JSON). The action is a Transform action, so it appears in the 文本转换 submenu and can be pinned and reordered like any built-in one.
 
 - **Sandbox:** scripts run in a Jint sandbox with CLR interop disabled — no file, network or clipboard access by default. One run is limited to **2 seconds**, **50,000 statements**, **16 MB** of memory and **128K characters** of output.
-- **Storage:** the source is written to `%APPDATA%\SnapActions\scripts\{Id}.js` and `settings.json` keeps only the file name, so you can edit the `.js` file with your own editor and the next run picks it up.
+- **Storage:** the source is written to `%APPDATA%\IKnowText\scripts\{Id}.js` and `settings.json` keeps only the file name, so you can edit the `.js` file with your own editor and the next run picks it up.
 - **上下文触发 (context trigger):** an optional regular expression. When it matches the current selection, the script action is also pushed inline into the toolbar's context row (next to Calculate or Format JSON) while remaining available in the 文本转换 submenu. An empty, invalid or pathologically slow pattern simply never matches — a badly backtracking pattern is abandoned after 200 ms rather than delaying the toolbar.
 - **允许此脚本访问网络 (allow this script network access):** per script, off by default. When it is on, the sandbox additionally receives `await http.get(url, options)` / `await http.post(url, body, options)` (returning `{status, ok, headers, body}`) and `await Translation(text, from, to)` (which runs the translation engine selected under 设置 → 翻译 → 自定义翻译). Turning it on asks for the online-lookup consent once. Requests must be absolute http/https URLs; loopback, link-local, `.local` and private-range hosts are refused; a single request is capped at 8 seconds and 256 KB of response body; a run may make at most 5 requests within a 20-second network budget and 30 seconds overall; redirects are not followed and Windows credentials are never attached.
 - **Testing:** the editor runs the script against a sample text as you type and shows the sandbox's `console.log` output. Networked scripts debounce that live preview, issue real requests and need the consent gate; the scripts themselves write nothing to your clipboard or files.
@@ -163,20 +163,20 @@ Settings → 自定义 → JS 脚本动作 → 添加脚本动作 adds your own 
 - **Detection is local.** All detectors run in-process. No network calls for detection.
 - **Online actions are opt-in.** Translate sends the selection and chosen languages to the Baidu Translate API (fanyi-api.baidu.com). Currency requests exchange rates for the source currency from open.er-api.com; the selected amount stays local. A script action you opted into network access, and a custom translation engine you selected, make whatever requests their script defines. All of it runs over HTTPS, only after you allow online lookups, and declining a prompt sends nothing.
 - **Credentials are encrypted at rest.** The Baidu AppID and secret are protected with Windows DPAPI for the current user before they are written to `settings.json`.
-- **Browser-handoff actions.** IP Lookup (ipinfo.io) opens a URL containing your selection in your default browser; SnapActions itself never makes the request. Web search engines work the same way.
+- **Browser-handoff actions.** IP Lookup (ipinfo.io) opens a URL containing your selection in your default browser; IKnowText itself never makes the request. Web search engines work the same way.
 - **Everything else stays local.** Format/minify, transform, encode/decode, hash, color/unit/timezone/JWT/Base64 — none of these touch the network.
 - **Excluded apps.** No toolbar appears while an excluded process is in the foreground; the defaults add PotPlayerMini64 and PotPlayerMini, and you can add your own under Settings → 应用.
 - **Risky-extension prompt.** Opening files with code-bearing extensions (`.exe`, `.bat`, `.ps1`, `.iso`, `.docm`, `.lnk`, …) requires explicit confirmation. Without this, a malicious selection like `C:\Users\you\Downloads\invoice.exe` could be one click away from running.
 - **UNC path prompt.** Opening `\\server\share\…` paths prompts before contacting the remote host. Without the prompt, opening a UNC path on an attacker-controlled network could initiate an SMB connection that leaks your Windows NTLM hash to the named server.
-- **No SnapActions telemetry.** The desktop app has no analytics, automatic updater or account. Online providers have their own behavior and policies.
+- **No IKnowText telemetry.** The desktop app has no analytics, automatic updater or account. Online providers have their own behavior and policies.
 
 ## How it works
 
 **Dedicated mouse-hook thread.** The low-level Windows mouse hook runs on its own STA background thread with its own dispatcher. UI thread work — WPF rendering, GC, layout — never delays mouse callbacks. Selection debounce uses `Environment.TickCount64` so NTP sync, hibernation resume, or manual clock changes never spuriously suppress or re-fire the hook.
 
-**Automatic text capture is clipboard-free.** Mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. SnapActions walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. Automatic capture never sends a copy message: only when the tree yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert keystroke, then restores the previous clipboard.
+**Automatic text capture is clipboard-free.** Mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. IKnowText walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. Automatic capture never sends a copy message: only when the tree yields no selection at all does IKnowText fall back to a synthetic Ctrl+Insert keystroke, then restores the previous clipboard.
 
-UI Automation coverage is not universal. Java Swing, some browser/Electron contexts, and custom text renderers may expose no selected text, so the automatic toolbar cannot appear there without a copy operation. A Chromium gesture fails closed when its geometry cannot be mapped safely (including cross-line bidi drags), when its range extends outside the provider's document, or when a double-click word cannot confirm the provider-reported selection length. Enable **按 Ctrl+C 时显示工具栏** for those cases: your physical copy supplies the exact text, and SnapActions validates and reads the resulting clipboard value.
+UI Automation coverage is not universal. Java Swing, some browser/Electron contexts, and custom text renderers may expose no selected text, so the automatic toolbar cannot appear there without a copy operation. A Chromium gesture fails closed when its geometry cannot be mapped safely (including cross-line bidi drags), when its range extends outside the provider's document, or when a double-click word cannot confirm the provider-reported selection length. Enable **按 Ctrl+C 时显示工具栏** for those cases: your physical copy supplies the exact text, and IKnowText validates and reads the resulting clipboard value.
 
 **Clipboard behavior is explicit.** Automatic highlighting never touches it. A physical Ctrl+C changes it because you requested a copy. Native result previews close after a successful explicit copy; `restoreClipboardAfterAction` (off by default, edited in `settings.json`) can put the prior contents back after about 3 seconds. The translation popup's **复制结果** button copies the translation and leaves the popup open.
 
@@ -191,16 +191,16 @@ UI Automation coverage is not universal. Java Swing, some browser/Electron conte
 1. **NCHITTEST gate** (gesture-fire time) — gestures that started on a window's title bar, resize border, or native scrollbar are dropped. The hook can't tell those drags from a text-selection drag at the OS level, so we ask the receiving window via `WM_NCHITTEST` — deferred to fire time so only candidate selection gestures (not every click system-wide) pay the cross-process round-trip.
 2. **Scrollbar-edge heuristic** (mouse-up) — a drag with both endpoints within ~25 px of the right (or left, in RTL layouts) edge AND primarily vertical is treated as a custom-scrollbar drag (Chrome, VS Code, Slack, Electron apps). Same with bottom edge + horizontal motion.
 3. **Cursor-shape gate** (mouse-down + mouse-up) — the OS shows the text (I-beam) cursor over selectable text, a more universal signal than UIA TextPattern. I-beam at either point permits capture. A *hard* non-text cursor (resize, crosshair, wait, no-drop, …) at both points — resizing a window, a busy app, dragging a slider — is dropped before UIA work. Arrow, link-hand, custom, and unreadable cursors remain eligible because browsers and custom controls can display them over real selectable text.
-4. **Excluded-app + self-PID checks** — anything in your Settings → 应用 list never sees a toolbar, and clicks on SnapActions's own toolbar are ignored.
-5. **Selection read** — SnapActions checks the focused element's accessibility tree and then the element under the cursor; if neither yields text, the synthetic Ctrl+Insert fallback can still supply it. A known non-text item stops capture. Empty or unavailable data produces no toolbar.
+4. **Excluded-app + self-PID checks** — anything in your Settings → 应用 list never sees a toolbar, and clicks on IKnowText's own toolbar are ignored.
+5. **Selection read** — IKnowText checks the focused element's accessibility tree and then the element under the cursor; if neither yields text, the synthetic Ctrl+Insert fallback can still supply it. A known non-text item stops capture. Empty or unavailable data produces no toolbar.
 
-If a suppression case is misbehaving in your app, check the log file (`%AppData%\SnapActions\logs\YYYY-MM-DD.log`) — every gate that fires writes a line with the cursor position and reason. As an escape hatch, add the app's process name to **Settings → 应用**.
+If a suppression case is misbehaving in your app, check the log file (`%AppData%\IKnowText\logs\YYYY-MM-DD.log`) — every gate that fires writes a line with the cursor position and reason. As an escape hatch, add the app's process name to **Settings → 应用**.
 
 ## Build from source
 
 ```bash
-git clone https://github.com/XuejiMeixiangli/IKonwText.git
-cd IKonwText
+git clone https://github.com/XuejiMeixiangli/IKnowText.git
+cd IKnowText
 dotnet build SnapActions/SnapActions.csproj -c Release
 dotnet test SnapActions.Tests/SnapActions.Tests.csproj
 ```
@@ -219,7 +219,7 @@ For isolated manual testing, set `SNAPACTIONS_DATA_DIR` to an **absolute path** 
 
 The xUnit suite covers detection and selection geometry (including multiline and bidi mapping), transforms and encoders, unit/color/math conversion, the Baidu client and credential storage, capture policy and selection validation, clipboard/operation safety, JS script execution (sandbox results, console capture, context triggers and the network bridge), toolbar pinning/visibility preferences, search URL templates, and lookup/fetch response handling.
 
-CI runs the complete [package gate](../tools/package.py), which restores packages in locked mode, runs the xUnit suite with warnings treated as errors, publishes the self-contained executable, runs its `--self-test` (compiled WPF layout/state checks and renders, reported as a JSON receipt) against an isolated data directory, and writes the ZIP plus SHA-256 checksums. See [the workflow](../.github/workflows/build.yml) and [CI runs](https://github.com/XuejiMeixiangli/IKonwText/actions/workflows/build.yml). Automated checks and compiled renders do not certify every live interaction.
+CI runs the complete [package gate](../tools/package.py), which restores packages in locked mode, runs the xUnit suite with warnings treated as errors, publishes the self-contained executable, runs its `--self-test` (compiled WPF layout/state checks and renders, reported as a JSON receipt) against an isolated data directory, and writes the ZIP plus SHA-256 checksums. See [the workflow](../.github/workflows/build.yml) and [CI runs](https://github.com/XuejiMeixiangli/IKnowText/actions/workflows/build.yml). Automated checks and compiled renders do not certify every live interaction.
 
 ## Architecture
 

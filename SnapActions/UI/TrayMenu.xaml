@@ -115,7 +115,7 @@
 
     <!-- 系统托盘图标载体 -->
     <tb:TaskbarIcon x:Key="TrayIcon"
-                    ToolTipText="SnapActions"
+                    ToolTipText="IKnowText"
                     NoLeftClickDelay="True"
                     ContextMenu="{StaticResource TrayContextMenu}" />
 

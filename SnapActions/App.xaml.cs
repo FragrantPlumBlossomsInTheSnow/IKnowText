@@ -24,17 +24,21 @@ public partial class App : Application
             return;
         }
 
-        var mutexName = "SnapActions_SingleInstance_Mutex" + RuntimePaths.InstanceSuffix;
+        var mutexName = "IKnowText_SingleInstance_Mutex" + RuntimePaths.InstanceSuffix;
         _mutex = new Mutex(true, mutexName, out bool createdNew);
         _ownsMutex = createdNew;
 
         if (!createdNew)
         {
-            MessageBox.Show("SnapActions is already running.", "SnapActions",
+            MessageBox.Show("IKnowText is already running.", "IKnowText",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
+
+        // 改名后第一次启动：把 %AppData%\SnapActions 里的设置与脚本搬到 %AppData%\IKnowText，
+        // 免得老用户的自定义动作/翻译引擎/偏好凭空消失。必须早于 SettingsManager.Load()。
+        RuntimePaths.MigrateLegacyDataDirectory();
 
         base.OnStartup(e);
 
@@ -63,7 +67,7 @@ public partial class App : Application
             args.SetObserved();
         };
 
-        Log.Info($"SnapActions starting (PID {Environment.ProcessId}, .NET {Environment.Version})");
+        Log.Info($"IKnowText starting (PID {Environment.ProcessId}, .NET {Environment.Version})");
 
         SettingsManager.Load();
         ThemeManager.Start();
@@ -83,7 +87,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        Log.Info("SnapActions shutting down");
+        Log.Info("IKnowText shutting down");
         KeyboardHook.Uninstall();
         ThemeManager.Stop();
         _tracker?.Stop();

@@ -90,7 +90,7 @@ public static class SettingsManager
 
     /// <summary>
     /// Keep only the 5 most recent settings.json.broken-* backups. Without this, repeated load
-    /// failures (dying disk, AV scanner racing) accumulate junk in %AppData%\SnapActions forever.
+    /// failures (dying disk, AV scanner racing) accumulate junk in %AppData%\IKnowText forever.
     /// </summary>
     private static void PruneStaleBackups()
     {

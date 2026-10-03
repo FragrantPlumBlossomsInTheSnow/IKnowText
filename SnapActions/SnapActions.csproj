@@ -9,8 +9,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>SnapActions</AssemblyName>
+    <AssemblyName>IKnowText</AssemblyName>
     <RootNamespace>SnapActions</RootNamespace>
+    <Product>IKnowText</Product>
+    <AssemblyTitle>IKnowText</AssemblyTitle>
+    <Description>IKnowText — 基于 SnapActions v2.4.5 的本地化改造版</Description>
     <Version>2.4.5</Version>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

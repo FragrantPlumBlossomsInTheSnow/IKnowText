@@ -340,8 +340,7 @@ public partial class SettingsWindow : FluentWindow
                 try
                 {
                     if (p.Id == own || p.MainWindowHandle == IntPtr.Zero) continue;
-                    if (!string.IsNullOrEmpty(p.ProcessName) &&
-                        !p.ProcessName.Equals("SnapActions", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrEmpty(p.ProcessName) && !Core.ForegroundApp.IsOwnProcess(p.ProcessName))
                         appNames.Add(p.ProcessName);
                 }
                 catch
@@ -473,7 +472,7 @@ public partial class SettingsWindow : FluentWindow
         if (enable)
         {
             var r = MessageBox.Show(
-                "勾选后将在「任务计划程序」创建任务（名称：SnapActions），\n" +
+                "勾选后将在「任务计划程序」创建任务（名称：IKnowText），\n" +
                 "为了静默启动，该任务会以最高权限运行\n\n" +
                 "确定开启吗？",
                 "开机自启",
@@ -752,7 +751,7 @@ public partial class SettingsWindow : FluentWindow
                     var name = p.ProcessName; // already without .exe
                     if (string.IsNullOrEmpty(name)) continue;
                     if (existing.Contains(name)) continue;
-                    if (name.Equals("SnapActions", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (Core.ForegroundApp.IsOwnProcess(name)) continue;
                     names.Add(name);
                 }
                 catch

@@ -8,9 +8,15 @@ namespace SnapActions.Config;
 /// </summary>
 internal static class AutoStartTask
 {
-    public const string TaskName = "SnapActions";
+    public const string TaskName = "IKnowText";
 
-    public static bool IsRegistered()
+    /// <summary>改名前的任务名。查询/删除都会带上它，免得老任务与「IKnowText」任务同时存在、开机启动两次。</summary>
+    private const string LegacyTaskName = "SnapActions";
+
+    /// <summary>当前或改名前的任务存在即视为已注册（用户勾选项按真实情况显示）。</summary>
+    public static bool IsRegistered() => Query(TaskName) || Query(LegacyTaskName);
+
+    private static bool Query(string taskName)
     {
         var psi = new ProcessStartInfo
         {
@@ -73,7 +79,10 @@ internal static class AutoStartTask
         }
     }
 
-    public static bool Delete()
+    /// <summary>删除当前任务，并顺手清掉改名前的旧任务。</summary>
+    public static bool Delete() => Delete(TaskName) | Delete(LegacyTaskName);
+
+    private static bool Delete(string taskName)
     {
         var psi = new ProcessStartInfo
         {
@@ -83,7 +92,7 @@ internal static class AutoStartTask
         };
         psi.ArgumentList.Add("/Delete");
         psi.ArgumentList.Add("/TN");
-        psi.ArgumentList.Add(TaskName);
+        psi.ArgumentList.Add(taskName);
         psi.ArgumentList.Add("/F");
 
         try

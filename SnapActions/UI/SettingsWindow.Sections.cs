@@ -160,7 +160,7 @@ public partial class SettingsWindow
             System.Windows.Automation.AutomationProperties.SetName(remove, "Delete script action " + action.Name);
             remove.Click += (_, _) =>
             {
-                if(MessageBoxResult.No != MessageBox.Show("删除 " + action.Name, "SpanActions", MessageBoxButton.YesNo))
+                if(MessageBoxResult.No != MessageBox.Show("删除 " + action.Name, "IKnowText", MessageBoxButton.YesNo))
                     return;
                 ScriptActionStorage.Delete(action);
                 SettingsManager.Current.UserActions.Remove(action);
@@ -196,7 +196,7 @@ public partial class SettingsWindow
             System.Windows.Automation.AutomationProperties.SetName(remove, "Delete translation engine " + engine.Name);
             remove.Click += (_, _) =>
             {
-                if (MessageBoxResult.No != MessageBox.Show("删除 " + engine.Name, "SpanActions", MessageBoxButton.YesNo))
+                if (MessageBoxResult.No != MessageBox.Show("删除 " + engine.Name, "IKnowText", MessageBoxButton.YesNo))
                     return;
                 ScriptActionStorage.Delete(engine);
                 SettingsManager.Current.TranslationEngines.Remove(engine);
