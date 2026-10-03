@@ -46,7 +46,7 @@ def main():
         "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:EnableCompressionInSingleFile=true",
         "-p:DebugType=none", "-p:RestoreLockedMode=true", "-warnaserror", "-o", str(publish))
     environment = os.environ.copy()
-    environment["SNAPACTIONS_DATA_DIR"] = str(receipt / "ui")
+    environment["IKONWTEXT_DATA_DIR"] = str(receipt / "ui")
     run(str(publish / f"{assembly_name}.exe"), "--self-test", env=environment, timeout=60)
     result = json.loads((receipt / "ui" / "self-test.json").read_text(encoding="utf-8"))
     if not result["passed"]:

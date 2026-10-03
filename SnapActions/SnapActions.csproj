@@ -42,9 +42,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 发行包要随附第三方许可（MIT 要求保留版权声明）：licenses\ 与 LICENSE 一起复制到输出/发布目录。
+         注意别再写 <Content Remove="..\licenses\**" /> —— 那会把刚 Include 进来的文件又移除掉，
+         导致发布包里只剩 exe，用户拿不到许可声明。 -->
     <Content Include="..\licenses\*" Link="licenses\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <Content Remove="..\licenses\**" />
+    <Content Include="..\LICENSE" Link="LICENSE"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
 </Project>

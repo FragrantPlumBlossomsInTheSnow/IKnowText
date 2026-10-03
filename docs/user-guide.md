@@ -160,6 +160,8 @@ Settings → 自定义 → JS 脚本动作 → 添加脚本动作 adds your own 
 - **允许此脚本访问网络 (allow this script network access):** per script, off by default. When it is on, the sandbox additionally receives `await http.get(url, options)` / `await http.post(url, body, options)` (returning `{status, ok, headers, body}`) and `await Translation(text, from, to)` (which runs the translation engine selected under 设置 → 翻译 → 自定义翻译). Turning it on asks for the online-lookup consent once. Requests must be absolute http/https URLs; loopback, link-local, `.local` and private-range hosts are refused; a single request is capped at 8 seconds and 256 KB of response body; a run may make at most 5 requests within a 20-second network budget and 30 seconds overall; redirects are not followed and Windows credentials are never attached.
 - **Testing:** the editor runs the script against a sample text as you type and shows the sandbox's `console.log` output. Networked scripts debounce that live preview, issue real requests and need the consent gate; the scripts themselves write nothing to your clipboard or files.
 
+> ⚠️ **A script with network access sends and receives requests.** Only tick 允许此脚本访问网络 for scripts you have read and trust, and never hand a script secrets (passwords, API keys, tokens) to upload. The sandbox blocks file and clipboard access and caps runtime and response size, but it cannot stop a deliberate request to an endpoint the script chooses.
+
 Examples:
 
 ```js
@@ -238,7 +240,7 @@ python tools/package.py
 
 `SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained single-file executable, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders of the settings pages, tray menu, toolbar and editors. It never replaces an existing installation. NuGet dependencies are restored in locked mode and `global.json` pins the SDK. `SnapActions/publish.bat` is the shortcut for a plain single-file publish without the verification steps.
 
-For isolated manual testing, set `SNAPACTIONS_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
+For isolated manual testing, set `IKONWTEXT_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
 
 ## Tests & CI
 
