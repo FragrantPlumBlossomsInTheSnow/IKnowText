@@ -37,7 +37,6 @@ def main():
     run("dotnet", "restore", "SnapActions.Tests/SnapActions.Tests.csproj", "--locked-mode")
     run("dotnet", "test", "SnapActions.Tests/SnapActions.Tests.csproj", "-c", "Release", "--no-restore", "-warnaserror",
         "--logger", "trx;LogFileName=tests.trx", "--results-directory", str(receipt))
-    run("node", "--test", "browser-extension/tests/selection.test.cjs")
     run("dotnet", "publish", "SnapActions/SnapActions.csproj", "-c", "Release", "-r", "win-x64", "--self-contained",
         "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:EnableCompressionInSingleFile=true",
         "-p:DebugType=none", "-p:RestoreLockedMode=true", "-warnaserror", "-o", str(publish))
@@ -47,7 +46,6 @@ def main():
     result = json.loads((receipt / "ui" / "self-test.json").read_text(encoding="utf-8"))
     if not result["passed"]:
         raise RuntimeError(result["failure"])
-    run(os.sys.executable, "browser-extension/tests/native-host-smoke.py", str(publish / "SnapActions.exe"), timeout=45)
     files = sorted(p for p in publish.rglob("*") if p.is_file())
     (publish / "SHA256SUMS").write_text("".join(f"{checksum(p)}  {p.relative_to(publish).as_posix()}\n" for p in files), encoding="utf-8")
     version = ET.parse(ROOT / "SnapActions" / "SnapActions.csproj").findtext(".//Version")

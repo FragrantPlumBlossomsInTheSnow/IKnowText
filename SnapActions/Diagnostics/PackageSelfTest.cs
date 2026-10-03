@@ -29,11 +29,6 @@ internal static class PackageSelfTest
             SettingsManager.Load();
             CheckSettingsSaveFailures();
             checks.Add("Settings write/replace failures preserve saved pins, report errors, and recover on retry/reload");
-            /*foreach (string asset in new[] { "manifest.json", "background.js", "read-selection.js", "selection-sample.html", "install-host.ps1" })
-                Require(File.Exists(Path.Combine(BrowserSetupService.ExtensionDirectory, asset)), "Missing companion file: " + asset);*/
-            // using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(BrowserSetupService.ExtensionDirectory, "manifest.json")));
-            // Require(manifest.RootElement.GetProperty("minimum_chrome_version").GetString() == "106", "Companion browser minimum mismatch");
-            checks.Add("Companion publish assets present");
 
             foreach (var theme in new[] { "dark", "light" })
             {

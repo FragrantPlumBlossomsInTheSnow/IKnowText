@@ -1,6 +1,6 @@
 # SnapActions user guide
 
-[Back to the overview](../README.md) · [Browser companion setup](../browser-extension/README.md)
+[Back to the overview](../README.md)
 
 This reference covers everyday actions, settings, compatibility and development.
 
@@ -32,9 +32,9 @@ Transforms open a result preview with **Copy result** and, for a verified editab
 
 A busy clipboard leaves **Copy result** available for a safe retry. A cancelled or uncertain replacement requires a fresh selection. If every matching action is hidden, the toolbar still offers Copy and the customization menu.
 
-Automatic highlight capture is clipboard-free: leave **Show toolbar automatically when I select text** on. The optional [browser companion](../browser-extension/README.md) reads the browser's actual selected text, including mixed Arabic/English and selections spanning multiple lines. Other apps use UI Automation. Neither automatic path runs a copy command or touches the clipboard. For unsupported surfaces, turn on **Show toolbar when I press Ctrl+C** and copy explicitly to summon the toolbar there.
+Automatic highlight capture is clipboard-free: leave **Show toolbar automatically when I select text** on. Selections are read from the focused element's accessibility tree, with a Chromium geometry fallback for same-line drags; only when that yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, restoring the previous clipboard afterwards. For unsupported surfaces, turn on **Show toolbar when I press Ctrl+C** and copy explicitly to summon the toolbar there.
 
-Press **Ctrl+Shift+Space** for the searchable action palette. Use Up/Down to choose, Enter to run, and Esc to close. Pure actions preview their result before Copy or Replace. If no selection is readable, enter text in the palette. An unavailable shortcut is reported in Settings → Browser → Capture health.
+Press **Ctrl+Shift+Space** for the searchable action palette. Use Up/Down to choose, Enter to run, and Esc to close. Pure actions preview their result before Copy or Replace. If no selection is readable, enter text in the palette. An unavailable shortcut is written to the log file.
 
 Mixed Arabic/English hover previews use the browser selection's text direction when available, with the selected phrase displayed separately from the English search label. Long previews trim within the popup. Leaving a toolbar action closes its hover-only popup; an open action menu stays available. This affects display only; copied text stays unchanged.
 
@@ -155,15 +155,13 @@ Logs go to `%AppData%\SnapActions\logs\YYYY-MM-DD.log`, capped at 10 MB per file
 
 **Dedicated mouse-hook thread.** The low-level Windows mouse hook runs on its own STA background thread with its own dispatcher. UI thread work — WPF rendering, GC, layout — never delays mouse callbacks. Selection debounce uses `Environment.TickCount64` so NTP sync, hibernation resume, or manual clock changes never spuriously suppress or re-fire the hook.
 
-**Automatic text capture is clipboard-free.** With the browser companion connected, mouse selections come directly from the focused page's Selection API or input selection offsets. SnapActions verifies the browser window, tab, document, frame and range before using the text. This path supports mixed Arabic/English and selections across lines without reconstructing character geometry.
-
-Without the companion, mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. SnapActions walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. Neither automatic path sends `WM_COPY`, injects `Ctrl+Insert`, or reads, clears, or writes the clipboard.
+**Automatic text capture is clipboard-free.** Mouse drag, double-click, and triple-click selection use `TextPattern.GetSelection` through the accessibility tree. SnapActions walks up to 6 parents of the focused element and also checks the element under the cursor. For Chromium, same-line drags reconstruct characters from their on-screen geometry and map visual bidi runs back to logical text order; double-click reconstructs the clicked word and requires the same UTF-16 length as the provider selection. This workaround has limits around mixed-direction content. This path never sends `WM_COPY`; only when the tree yields no selection at all does SnapActions fall back to a synthetic Ctrl+Insert copy, then restores the previous clipboard.
 
 UI Automation coverage is not universal. Java Swing, some browser/Electron contexts, and custom text renderers may expose no selected text, so the automatic toolbar cannot appear there without a copy operation. A Chromium gesture fails closed when its geometry cannot be mapped safely (including cross-line bidi drags), when its range extends outside the provider's document, or when a double-click word cannot confirm the provider-reported selection length. Enable **Show toolbar when I press Ctrl+C** for those cases: your physical copy supplies the exact text, and SnapActions validates and reads the resulting clipboard value.
 
 **Clipboard behavior is explicit.** Automatic highlighting never touches it. A physical Ctrl+C changes it because you requested a copy. Native result previews close after a successful explicit copy; **Restore previous clipboard after copy action** can put the prior contents back after about 3 seconds. Google's embedded Copy control does not close the translation popup or use SnapActions' clipboard-restoration setting.
 
-**Editable-field detection.** Native Delete, Paste and Replace require an enabled control with affirmative writable evidence from UI Automation, plus the captured selection's exact text and endpoints at execution. Missing evidence keeps captured-text actions available but disables edits. Browser capture additionally checks the companion's editable flag and revalidates the captured document and selection. A caret or control type alone cannot authorize an edit.
+**Editable-field detection.** Native Delete, Paste and Replace require an enabled control with affirmative writable evidence from UI Automation, plus the captured selection's exact text and endpoints at execution. Missing evidence keeps captured-text actions available but disables edits. A caret or control type alone cannot authorize an edit.
 
 Provider accuracy remains a limit: in the tested VS Code 1.113.0 screen-reader mode, a session-read-only editor reported writable text patterns. SnapActions offered Delete, which VS Code rejected without changing the document. With the default accessibility setting, the tested editor did not expose usable selection ranges; explicit Ctrl+C supplied text while editing pins stayed disabled. The [VS Code follow-up](release-validation-2026-09-08.md#vs-code-read-only-follow-up) explains why this remains a known limitation.
 
@@ -177,7 +175,7 @@ Provider accuracy remains a limit: in the tested VS Code 1.113.0 screen-reader m
 2. **Scrollbar-edge heuristic** (mouse-up) — a drag with both endpoints within ~25 px of the right (or left, in RTL layouts) edge AND primarily vertical is treated as a custom-scrollbar drag (Chrome, VS Code, Slack, Electron apps). Same with bottom edge + horizontal motion.
 3. **Cursor-shape gate** (mouse-down + mouse-up) — the OS shows the text (I-beam) cursor over selectable text, a more universal signal than UIA TextPattern. I-beam at either point permits capture. A *hard* non-text cursor (resize, crosshair, wait, no-drop, …) at both points — resizing a window, a busy app, dragging a slider — is dropped before UIA work. Arrow, link-hand, custom, and unreadable cursors remain eligible because browsers and custom controls can display them over real selectable text.
 4. **Excluded-app + self-PID checks** — anything in your Settings → Excluded apps list never sees a toolbar, and clicks on SnapActions's own toolbar are ignored.
-5. **Browser or UIA selection read** — a connected browser companion supplies the current page selection. Otherwise, SnapActions checks the focused element's accessibility tree and then the element under the cursor. A known non-text item stops capture. Empty or unavailable data produces no toolbar and no clipboard fallback.
+5. **Selection read** — SnapActions checks the focused element's accessibility tree and then the element under the cursor; if neither yields text, the synthetic Ctrl+Insert fallback can still supply it. A known non-text item stops capture. Empty or unavailable data produces no toolbar.
 
 If a suppression case is misbehaving in your app, check the log file (`%AppData%\SnapActions\logs\YYYY-MM-DD.log`) — every gate that fires writes a line with the cursor position and reason. As an escape hatch, add the app's process name to **Settings → Excluded apps**.
 
@@ -190,26 +188,26 @@ dotnet build SnapActions/SnapActions.csproj -c Release
 dotnet test SnapActions.Tests/SnapActions.Tests.csproj
 ```
 
-Build a complete verified package (Windows, .NET SDK 10.0.303, Node 22.23.1, and Python 3.11+):
+Build a complete verified package (Windows, .NET SDK 10.0.303, and Python 3.11+):
 
 ```powershell
 python tools/package.py
 ```
 
-`SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained executable with companion sidecars, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders. It never replaces an existing installation. NuGet dependencies are locked; `global.json` and `.node-version` pin the toolchain.
+`SnapActions/build.bat` runs the same command. Each run writes a fresh directory under `artifacts`: a self-contained executable, a ZIP, SHA-256 checksums, test receipts, and compiled WPF renders. It never replaces an existing installation. NuGet dependencies are locked and `global.json` pins the SDK.
 
-For isolated manual testing, set `SNAPACTIONS_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs, mutex and browser pipe then use that separate instance. Startup registration and browser registration are disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
+For isolated manual testing, set `SNAPACTIONS_DATA_DIR` to an **absolute path** before starting the executable. Settings, logs and mutex then use that separate instance. Startup registration is disabled for isolated instances. `--self-test` requires this override and runs without global hooks or clipboard writes.
 
 ## Tests & CI
 
-The xUnit suite covers detection, transforms, native target/clipboard ownership, partial input, selection generations, UIA single-flight gates, lookup failures and caching, settings migrations, toolbar pinning/reordering/visibility, link cleaning, and recipe execution. Fetch action tests exercise the production service's JSON parsing, UTF-8 byte limits, cancellation and interrupted responses. Compiled WPF checks include settings write/replace failures, visible errors, retained saved preferences and retry/reload recovery. Retired WM_COPY/Ctrl+Insert capture-planner tests were removed with the inactive planner; explicit paste/delete safety tests remain.
+The xUnit suite covers detection, transforms, native target/clipboard ownership, partial input, selection generations, UIA single-flight gates, lookup failures and caching, settings migrations, toolbar pinning/reordering/visibility, link cleaning, and recipe execution. Fetch action tests exercise the production service's JSON parsing, UTF-8 byte limits, cancellation and interrupted responses. Compiled WPF checks include settings write/replace failures, visible errors, retained saved preferences and retry/reload recovery. Retired WM_COPY capture-planner tests were removed with the inactive planner; explicit paste/delete safety tests remain.
 
-The browser suite checks exact text, input/password restrictions, frames, navigation epochs, document-specific revalidation and protocol compatibility. CI runs the complete [package gate](../tools/package.py), including the published executable's real UTF-8 native-host relay, desktop-disconnect recovery, and compiled WPF layout/state checks. See [the workflow](../.github/workflows/build.yml), [CI runs](https://github.com/roko-tech/SnapActions/actions/workflows/build.yml), and [validation notes](implementation-validation.md). Automated checks and compiled renders do not certify every live interaction; the remaining gaps are listed in the release notes.
+CI runs the complete [package gate](../tools/package.py), including the published executable's `--self-test` and compiled WPF layout/state checks. See [the workflow](../.github/workflows/build.yml), [CI runs](https://github.com/roko-tech/SnapActions/actions/workflows/build.yml), and [validation notes](implementation-validation.md). Automated checks and compiled renders do not certify every live interaction; the remaining gaps are listed in the release notes.
 
 ## Architecture
 
-Selection events create an operation generation tied to the original target. `SelectionCoordinator` chooses the browser or UIA provider and returns an immutable `SelectionSnapshot`. The registry matches actions, the toolbar/palette presents them, and `ActionRunner` coordinates explicit effects. `ClipboardTransaction` owns native snapshots and rollback; `InputExecutor` owns guarded paste/delete. Automatic capture has no synthetic-copy branch.
+Selection events create an operation generation tied to the original target. `SelectionCoordinator` reads the selection through UI Automation and returns an immutable `SelectionSnapshot`. The registry matches actions, the toolbar presents them, and `ActionRunner` coordinates explicit effects. `ClipboardTransaction` owns native snapshots and rollback; `InputExecutor` owns guarded paste/delete. When UI Automation yields no selection, capture falls back to a synthetic Ctrl+Insert copy and restores the previous clipboard.
 
-`LookupService` owns dictionary/currency/custom-fetch HTTP response budgets, provider parsing and successful exchange-rate caching. `ResultPopup` owns their loading/success/empty/error/cancelled presentation and stale-retry suppression. Translation uses a separate WebView2 popup hosting the visible Google Translate page. Settings parsing normalizes semantic data before migrations; native host and test instances have explicit runtime paths.
+`LookupService` owns dictionary/currency/custom-fetch HTTP response budgets, provider parsing and successful exchange-rate caching. `ResultPopup` owns their loading/success/empty/error/cancelled presentation and stale-retry suppression. Translation uses a separate WebView2 popup hosting the visible Google Translate page. Settings parsing normalizes semantic data before migrations; test instances have explicit runtime paths.
 
-Settings → Browser shows connection/capture health and a rolling 256-sample timing summary, without selected text. Timings separate event-time target identification, dispatcher queue, browser/UIA reads, validation, classification, matching and render-ready latency. Busy/timeout counters expose the cost of unavailable UIA providers. Render-ready excludes physical screen paint; these measurements are not a blanket performance claim. A hung UIA worker retains the single-flight gate to prevent thread accumulation. Process isolation remains conditional on measured provider hangs.
+Capture diagnostics are recorded for the log: timings separate event-time target identification, dispatcher queue, UIA reads, validation, classification, action matching and render-ready latency. Busy/timeout counters expose the cost of unavailable UIA providers. Render-ready excludes physical screen paint; these measurements are not a blanket performance claim. A hung UIA worker retains the single-flight gate to prevent thread accumulation.

@@ -118,29 +118,6 @@ public partial class SettingsWindow
         return text;
     }
 
-    // private string SelectedBrowser => (BrowserCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Brave";
-    // private void Browser_Changed(object sender, SelectionChangedEventArgs e) { if (!_loading) RefreshBrowserHealth(); }
-    // private void RefreshBrowser_Click(object sender, RoutedEventArgs e) => RefreshBrowserHealth();
-    // private void RefreshBrowserHealth()
-    // {
-    //     BrowserStatusText.Text = BrowserSetupService.Status(SelectedBrowser);
-    //     DiagnosticsBox.Text = CaptureDiagnostics.Summary();
-    // }
-    // private void RegisterBrowser_Click(object sender, RoutedEventArgs e)
-    // {
-    //     try { BrowserSetupService.Register(SelectedBrowser); RefreshBrowserHealth(); }
-    //     catch (Exception ex) { BrowserStatusText.Text = "Registration failed: " + ex.Message; }
-    // }
-    // private void OpenExtension_Click(object sender, RoutedEventArgs e) => OpenSetupPath(BrowserSetupService.ExtensionDirectory);
-    // private void OpenBrowserSample_Click(object sender, RoutedEventArgs e) => OpenSetupPath(System.IO.Path.Combine(BrowserSetupService.ExtensionDirectory, "selection-sample.html"));
-    // private void OpenSetupPath(string path)
-    // {
-    //     if (!System.IO.File.Exists(path) && !System.IO.Directory.Exists(path))
-    //     { BrowserStatusText.Text = "The companion files are missing. Extract the complete release package."; return; }
-    //     var result = ProcessHelper.TryOpenLocalPath(path, "Opened");
-    //     if (!result.Success) BrowserStatusText.Text = result.Message;
-    // }
-
     private void BuildRecipesList()
     {
         RecipesPanel.Children.Clear();

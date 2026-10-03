@@ -122,15 +122,6 @@ public class RoadmapFeatureTests
         Assert.Equal(0, requests);
     }
 
-    /*[Fact]
-    public void NativeManifestKeepsPathsWithSpacesAndOnlyTheAllowedOrigin()
-    {
-        using var manifest = JsonDocument.Parse(BrowserSetupService.ManifestJson(@"D:\Apps With Spaces\SnapActions.exe"));
-        Assert.Equal(@"D:\Apps With Spaces\SnapActions.exe", manifest.RootElement.GetProperty("path").GetString());
-        Assert.Equal(BrowserNativeHost.ExtensionOrigin, manifest.RootElement.GetProperty("allowed_origins")[0].GetString());
-        Assert.Single(manifest.RootElement.GetProperty("allowed_origins").EnumerateArray());
-    }*/
-
     private sealed class Handler(Func<string> response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
