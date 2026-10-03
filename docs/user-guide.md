@@ -2,6 +2,8 @@
 
 [Back to the overview](../README.md)
 
+![The toolbar above a selection](images/use-en.png)
+
 This reference covers everyday actions, settings, compatibility and development. The interface is in Chinese: on-screen labels are quoted as they appear, with an English gloss where it helps.
 
 - [Use the toolbar](#use)
@@ -157,6 +159,29 @@ Settings → 自定义 → JS 脚本动作 → 添加脚本动作 adds your own 
 - **上下文触发 (context trigger):** an optional regular expression. When it matches the current selection, the script action is also pushed inline into the toolbar's context row (next to Calculate or Format JSON) while remaining available in the 文本转换 submenu. An empty, invalid or pathologically slow pattern simply never matches — a badly backtracking pattern is abandoned after 200 ms rather than delaying the toolbar.
 - **允许此脚本访问网络 (allow this script network access):** per script, off by default. When it is on, the sandbox additionally receives `await http.get(url, options)` / `await http.post(url, body, options)` (returning `{status, ok, headers, body}`) and `await Translation(text, from, to)` (which runs the translation engine selected under 设置 → 翻译 → 自定义翻译). Turning it on asks for the online-lookup consent once. Requests must be absolute http/https URLs; loopback, link-local, `.local` and private-range hosts are refused; a single request is capped at 8 seconds and 256 KB of response body; a run may make at most 5 requests within a 20-second network budget and 30 seconds overall; redirects are not followed and Windows credentials are never attached.
 - **Testing:** the editor runs the script against a sample text as you type and shows the sandbox's `console.log` output. Networked scripts debounce that live preview, issue real requests and need the consent gate; the scripts themselves write nothing to your clipboard or files.
+
+Examples:
+
+```js
+// Reuse the translation engine picked under 设置 → 翻译 → 自定义翻译.
+// Tick 允许此脚本访问网络 in the editor first.
+async function JSAction(text) {
+  return await Translation(text, 'en', 'zh');
+}
+```
+
+```js
+// A custom translation engine: call any API and return the translated text. Engines always run
+// in the network sandbox and read the current languages from the globals.
+async function JSAction(text) {
+  var resp = await http.post(
+    'https://api.example.com/translate',
+    JSON.stringify({ q: text, from: SNAP_SOURCE_LANGUAGE, to: SNAP_TARGET_LANGUAGE }),
+    { headers: { 'Content-Type': 'application/json' } });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return JSON.parse(resp.body).result;
+}
+```
 
 ## Privacy
 
