@@ -7,9 +7,6 @@ A Windows selection toolbar that appears when you select text — an independent
 
 仓库 <https://github.com/XuejiMeixiangli/IKnowText> · 详细文档：[用户指南](docs/user-guide.md)
 
-## 如何使用
-
-工具栏会出现在鼠标上方：选中一段文本，然后用它复制、粘贴、翻译、转换和搜索，无需离开工作窗口。
 
 ![工具栏](docs/images/use-zh.png)
 
@@ -22,7 +19,7 @@ A Windows selection toolbar that appears when you select text — an independent
 
 - **划词工具栏**：悬停预览结果；拖动固定、右键取消固定、齿轮编辑模式（左键显示/隐藏动作）、4 列自适应子菜单
 - **文本动作**：文本转换（大小写 / 排序 / 去重 / 包裹 …）、编码解码（URL / Base64 / HTML / Hex / 哈希）、计算、颜色 / 单位 / 时区 / JWT、链接清理、文本转换方案
-- **翻译**：百度翻译开放平台（凭据经 Windows DPAPI 加密）；也可用 JS 自写**自定义翻译引擎**替换
+- **翻译**：百度翻译开放平台（凭据经 Windows DPAPI 加密）；也可用 JS 自写**自定义翻译引擎**替换（入口 `Translate(text)`，与用户脚本动作的 `JSAction(text)` 分开）
 - **自定义 JS 脚本动作**：Jint 沙箱里的 `JSAction(text)`，支持「上下文触发」正则；勾选「允许此脚本访问网络」后脚本可以**发送并接收 HTTP 请求**
 - **触发与托盘**：划词即显示、按 `Ctrl+C` 显示、排除应用清单；托盘含 5 组动作开关 / 开机自启 / 设置 / 退出
 
@@ -40,10 +37,18 @@ A Windows selection toolbar that appears when you select text — an independent
 
 ```bat
 git clone https://github.com/XuejiMeixiangli/IKnowText.git
-dotnet build SnapActions\SnapActions.csproj -c Release            :: 构建
-dotnet test  SnapActions.Tests\SnapActions.Tests.csproj -c Release :: 单元测试（-warnaserror）
-SnapActions\publish.bat   :: 快速发布单文件
-SnapActions\build.bat     :: 完整打包 + 校验（ZIP 与校验和落在 artifacts\）
+
+:: 构建
+dotnet build SnapActions\SnapActions.csproj -c Release
+
+:: 单元测试（-warnaserror）
+dotnet test SnapActions.Tests\SnapActions.Tests.csproj -c Release
+
+:: 快速发布单文件
+SnapActions\publish.bat
+
+:: 完整打包 + 校验（ZIP 与校验和落在 artifacts\）
+SnapActions\build.bat
 ```
 
 ## 文档
@@ -52,16 +57,16 @@ SnapActions\build.bat     :: 完整打包 + 校验（ZIP 与校验和落在 arti
 | --- | --- |
 | [用户指南](docs/user-guide.md) | 动作与检测类型、使用与自定义、翻译与在线查询、自定义 JS 脚本动作、设置项、隐私、工作原理、构建与 CI |
 | [发布说明](docs/releases) | 各版本变更 |
-| [LICENSE](LICENSE) | MIT，版权归上游作者 roko-tech 所有 |
+| [LICENSE](LICENSE) | MIT；原版权归 [roko-tech](https://github.com/roko-tech)，改造部分归本仓库作者 |
 
-**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。改名前的 `%APPDATA%\SnapActions`（以及中间拼错的 `%APPDATA%\IKonwText`）会在首次启动时自动迁移，旧目录保留不删。用环境变量 `IKNOWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
+**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。首次启动时会自动从改名前的 `%APPDATA%\SnapActions` 迁移设置与脚本，旧目录保留不删。用环境变量 `IKNOWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
 
 ## English
 
 **IKnowText** is a Windows selection toolbar with a Chinese UI, based on SnapActions v2.4.5: select text and a toolbar appears with copy, translate, transform, encode/decode and search actions.
 
 - Baidu Translate API instead of Google + WebView2; credentials encrypted with Windows DPAPI
-- Custom JavaScript actions — `JSAction(text)` in a Jint sandbox with an optional context-trigger regex — plus custom translation engines. With 允许此脚本访问网络 (allow network) ticked, a script can **send requests and read the responses** via `await http.get/post(...)`
+- Custom JavaScript actions — `JSAction(text)` in a Jint sandbox with an optional context-trigger regex — plus custom translation engines (entry point `Translate(text)`, separate from `JSAction(text)`). With 允许此脚本访问网络 (allow network) ticked, a script can **send requests and read the responses** via `await http.get/post(...)`
 - Tray: five action-group toggles, auto-start, settings, exit. Online features are off by default
 - Self-contained single-file release: no .NET install, no WebView2, 64-bit Windows 10/11. Keep `LICENSE` and `licenses\` together with the executable when you redistribute it
 - Build: .NET SDK 10.0.400, `dotnet build SnapActions\SnapActions.csproj -c Release`; full gate: `SnapActions\build.bat`
@@ -71,4 +76,7 @@ SnapActions\build.bat     :: 完整打包 + 校验（ZIP 与校验和落在 arti
 
 ## Acknowledgements
 
-Based on [roko-tech/SnapActions](https://github.com/roko-tech/SnapActions), originally developed by [M. AL-hejji (rokogan)](https://github.com/rokogan).
+Based on [SnapActions](https://github.com/roko-tech/SnapActions) v2.4.5, copyright (c) 2026 [roko-tech](https://github.com/roko-tech).
+
+The SnapActions project is maintained by [rokogan](https://github.com/rokogan); original commits authored by M. AL-hejji. This repository is an independent Chinese-localised build with additional features — see [LICENSE](LICENSE) for the copyright of both the upstream project and this repository's modifications.
+
