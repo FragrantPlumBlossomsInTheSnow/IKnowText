@@ -42,13 +42,16 @@ public partial class ToolbarWindow
         var hasEngine = TranslationEngineService.HasSelectedEngine();
         if ((!hasEngine && !BaiduTranslator.CanTranslate(text)) || !ResultPopup.EnsureOnlineLookupConsent())
             return;
-        text = TranslationTextHelper.NormalizeEnglishIdentifiers(text);
-        if (string.IsNullOrEmpty(text)) return;
+        var processed = TranslationTextHelper.UserPreprocessingRegex(text);
+        processed = TranslationTextHelper.NormalizeEnglishIdentifiers(processed);
+
+        
+        if (string.IsNullOrEmpty(processed)) return;
 
         ResultPopup.CloseCurrent();
         CloseTranslatePopup();
 
-        _translateText = text.Trim();
+        _translateText = processed.Trim();
         var s = SettingsManager.Current;
         var followSource = s.TranslationSourceFollowSystem;
         TranslateSourceCombo.SelectedValue = followSource ? "system" : s.TranslationSourceLanguage;

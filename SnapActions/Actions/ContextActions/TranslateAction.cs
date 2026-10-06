@@ -24,7 +24,7 @@ public class TranslateAction : IAction
     {
         // 打开工具栏上的翻译弹层（不再创建独立窗口）；工具栏保持可见，翻译完成后由
         // 用户手动关闭（外部点击/Esc/关闭按钮）。
-        ToolbarWindow.Current?.ShowTranslate(TranslationTextHelper.PreprocessText(text));
+        ToolbarWindow.Current?.ShowTranslate(text);
         return new ActionResult(true) { KeepToolbarOpen = true };
     }
 }

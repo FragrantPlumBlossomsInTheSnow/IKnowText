@@ -11,7 +11,7 @@ public static partial class TranslationTextHelper
     ///     is guarded against invalid patterns (falls back to the raw text instead of crashing
     ///     the whole translate action) and is time-limited against catastrophic backtracking.
     /// </summary>
-    public static string PreprocessText(string text)
+    public static string UserPreprocessingRegex(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
         var pattern = SettingsManager.Current.ExcludeRegex;
@@ -42,24 +42,30 @@ public static partial class TranslationTextHelper
 
         var s = text;
 
-        // 1. snake_case / kebab-case：分隔符替换为空格
+        // 1. snake_case：下划线替换为空格（标识符专用符号，无条件拆安全）
         s = s.Replace('_', ' ');
-        s = s.Replace('-', ' ');
 
-        // 2. camelCase / PascalCase：小写或数字 → 大写 的边界
+        // 2. kebab-case：仅"字母-字母"的连字符拆为空格，保留 10-20 / 2024-10-06 / COVID-19
+        s = KebabBoundary().Replace(s, " ");
+
+        // 3. camelCase / PascalCase：小写或数字 → 大写 的边界
         s = LowerUpperBoundary().Replace(s, " ");
 
-        // 3. 连续大写后接小写：XMLHttp → XML Http
+        // 4. 连续大写后接小写：XMLHttp → XML Http
         s = AcronymBoundary().Replace(s, " ");
 
-        // 4. 字母 ↔ 数字边界：user2Name → user 2 Name
+        // 5. 字母 ↔ 数字边界：user2Name → user 2 Name
         s = LetterDigitBoundary().Replace(s, " ");
 
-        // 5. 合并行内多余空格（保留换行，段落结构不动）
+        // 6. 合并行内多余空格（保留换行，段落结构不动）
         s = CollapseHorizontalWhitespace().Replace(s, " ");
 
         return s.Trim();
     }
+
+// 只匹配"字母-字母"的连字符
+    [GeneratedRegex(@"(?<=[a-zA-Z])-(?=[a-zA-Z])")]
+    private static partial Regex KebabBoundary();
 
     // 小写/数字 后跟 大写："getUser" → "get User"
     [GeneratedRegex(@"(?<=[a-z0-9])(?=[A-Z])")]
