@@ -138,19 +138,11 @@
 
         <Grid Grid.Row="1" Margin="24,6,24,24">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <DockPanel Grid.Row="0" Margin="0,0,0,12">
-                <!--<TextBlock x:Name="SearchStatusText" DockPanel.Dock="Right" Margin="12,0,0,0"
-                           VerticalAlignment="Center" />
-                <TextBlock Text="搜索设置" VerticalAlignment="Center" Margin="0,0,10,0" />
-                <ui:TextBox x:Name="SettingsSearchBox" Padding="10,7" AutomationProperties.Name="Search settings"
-                            ToolTip="Search settings by name" TextChanged="SettingsSearch_Changed" />-->
-            </DockPanel>
 
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="2*" />
                     <ColumnDefinition Width="8*" />
@@ -240,29 +232,14 @@
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
                                 </StackPanel>
                             </Expander>
-                            <!-- <TextBlock Text="通用" Style="{StaticResource TitleText}" /> -->
                             <Expander IsExpanded="True" Header="工具栏行为" Style="{StaticResource WpfUiExpanderStyle}">
                                 <StackPanel>
-
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <!-- <CheckBox x:Name="RestoreClipboardCheck" -->
-                                    <!--           Content="复制操作后约3秒恢复上一个剪贴板内容" -->
-                                    <!--           ToolTip="当您单击复制文本的工具栏操作（格式化JSON、转换颜色等）时，结果将落在剪贴板上。启用此选项后，之前的剪贴板内容将在大约3秒后放回，这足够您先粘贴结果。" -->
-                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
-                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
                                     <CheckBox x:Name="OnlineLookupsCheck"
-                                              Content="允许在线查找（翻译）"
-                                              ToolTip="翻译将选定的文本发送到百度开放平台API。关闭此选项后，会在您选择之前询问。"
+                                              Content="允许在线查找（翻译/网络请求）"
+                                              ToolTip="允许翻译将选中文本发送到翻译API，允许Javascript脚本使用网络请求。否则，发送请求前会想你询问"
                                               Style="{StaticResource SettingCheckBoxStyle}"
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
                                     <Border Style="{StaticResource SettingDivider}" />
-                                    <!-- <CheckBox x:Name="CaptureOnMouseSelectionCheck" -->
-                                    <!--           Content="选择文本时自动显示工具栏" -->
-                                    <!--           ToolTip="自动选择捕获使用 UI 自动化，从不复制或触摸剪贴板。如果应用程序没有显示所选文本，请使用下面的 Ctrl+C 触发器。" -->
-                                    <!--           Style="{StaticResource SettingCheckBoxStyle}" -->
-                                    <!--           Checked="Setting_Changed" Unchecked="Setting_Changed" /> -->
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
                                     <CheckBox x:Name="CaptureOnCtrlCCheck"
                                               Content="按Ctrl+C时显示工具栏"
                                               ToolTip="启用此选项后，使用Ctrl+C复制文本也会弹出工具栏。这会读取您刚才复制的内容——无需合成按键，也无需清除剪贴板——因此不会干扰其他应用程序。"
@@ -320,41 +297,6 @@
                                             <ComboBoxItem Content="400毫秒" Tag="400" />
                                         </ComboBox>
                                     </DockPanel>
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <!-- -->
-                                    <!-- <DockPanel Style="{StaticResource SettingRowStyle}"> -->
-                                    <!--     <TextBlock Text="粘贴模式：" -->
-                                    <!--                DockPanel.Dock="Left" -->
-                                    <!--                Foreground="{DynamicResource TextFillColorPrimaryBrush}" -->
-                                    <!--                VerticalAlignment="Center" Margin="0,0,8,0" /> -->
-                                    <!--     <ComboBox x:Name="PasteModeCombo" Style="{StaticResource WpfUiComboBoxStyle}" -->
-                                    <!--               DockPanel.Dock="Right" -->
-                                    <!--               SelectionChanged="PasteMode_Changed" -->
-                                    <!--               ToolTip="如何调用粘贴菜单（出现时没有选择的菜单，提供粘贴/粘贴为变换等）" -->
-                                    <!--               AutomationProperties.Name="PasteModeCombo"> -->
-                                    <!--         <ComboBoxItem Content="长按" Tag="longpress" /> -->
-                                    <!--         <ComboBoxItem Content="双击" Tag="doubleclick" /> -->
-                                    <!--         <ComboBoxItem Content="关" Tag="off" /> -->
-                                    <!--     </ComboBox> -->
-                                    <!-- </DockPanel> -->
-                                    <!-- <Border Style="{StaticResource SettingDivider}" /> -->
-                                    <!-- -->
-                                    <!-- <DockPanel Style="{StaticResource SettingRowStyle}"> -->
-                                    <!--     <TextBlock Text="长按时间：" -->
-                                    <!--                DockPanel.Dock="Left" -->
-                                    <!--                Foreground="{DynamicResource TextFillColorPrimaryBrush}" -->
-                                    <!--                VerticalAlignment="Center" Margin="0,0,8,0" /> -->
-                                    <!--     <ComboBox x:Name="LongPressCombo" Style="{StaticResource WpfUiComboBoxStyle}" -->
-                                    <!--               DockPanel.Dock="Right" -->
-                                    <!--               SelectionChanged="LongPress_Changed" -->
-                                    <!--               ToolTip="按住鼠标按钮多长时间才能打开粘贴模式（仅适用于粘贴模式设置为长按时）" -->
-                                    <!--               AutomationProperties.Name="LongPressCombo"> -->
-                                    <!--         <ComboBoxItem Content="300毫秒" Tag="300" /> -->
-                                    <!--         <ComboBoxItem Content="500毫秒" Tag="500" /> -->
-                                    <!--         <ComboBoxItem Content="750毫秒" Tag="750" /> -->
-                                    <!--         <ComboBoxItem Content="1秒" Tag="1000" /> -->
-                                    <!--     </ComboBox> -->
-                                    <!-- </DockPanel> -->
                                     <Border Style="{StaticResource SettingDivider}" />
 
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
@@ -377,8 +319,7 @@
 
                                 </StackPanel>
                             </Expander>
-
-
+                            
                         </StackPanel>
                     </ScrollViewer>
                     <ScrollViewer x:Name="ActionsPage" Visibility="Collapsed"
@@ -460,7 +401,7 @@
                                                     AutomationProperties.Name="CustomUrlBox" />
                                     </DockPanel>
                                     <TextBlock
-                                        Text="｛0｝为选中的文本。例子：https://site.com/search?q={0}&amp;"
+                                        Text="｛0｝为选中的文本。例子：https://cn.bing.com/search?q={0}"
                                         FontSize="12"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         TextWrapping="Wrap" />
@@ -474,36 +415,6 @@
                     <ScrollViewer x:Name="LanguagePage" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="16">
-                            <!-- Language (search filter + translate/dictionary target) -->
-                            <!--<TextBlock Text="语言" Style="{StaticResource TitleText}" />
-                            <DockPanel>
-                                <TextBlock Text="搜索使用语言"
-                                           DockPanel.Dock="Left"
-                                           Style="{StaticResource WpfUiTextBlockStyle}" />
-
-                                <ComboBox
-                                    DockPanel.Dock="Right"
-                                    x:Name="LanguageCombo" Style="{StaticResource WpfUiComboBoxStyle}"
-                                    SelectionChanged="Language_Changed" AutomationProperties.Name="LanguageCombo">
-                                    <ComboBoxItem Content="不过滤" Tag="" />
-                                    <ComboBoxItem Content="英语" Tag="en" />
-                                    <ComboBoxItem Content="阿拉伯语" Tag="ar" />
-                                    <ComboBoxItem Content="西班牙语" Tag="es" />
-                                    <ComboBoxItem Content="法语" Tag="fr" />
-                                    <ComboBoxItem Content="德语" Tag="de" />
-                                    <ComboBoxItem Content="日语" Tag="ja" />
-                                    <ComboBoxItem Content="韩语" Tag="ko" />
-                                    <ComboBoxItem Content="中文" Tag="zh" />
-                                    <ComboBoxItem Content="葡萄牙语" Tag="pt" />
-                                    <ComboBoxItem Content="俄语" Tag="ru" />
-                                    <ComboBoxItem Content="土耳其语" Tag="tr" />
-                                    <ComboBoxItem Content="印地语" Tag="hi" />
-                                    <ComboBoxItem Content="意大利语" Tag="it" />
-                                </ComboBox>
-                            </DockPanel>-->
-
-
-                            <!-- <TextBlock Text="翻译" Style="{StaticResource TitleText}" /> -->
                             <Expander Header="翻译项" IsExpanded="True" Style="{StaticResource WpfUiExpanderStyle}">
                                 <StackPanel>
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
@@ -560,7 +471,7 @@
                                 </StackPanel>
                             </Expander>
 
-                            <Expander x:Name="BaiduExpander" Header="百度翻译" Style="{StaticResource WpfUiExpanderStyle}">
+                            <Expander x:Name="BaiduExpander" Header="百度翻译凭据" Style="{StaticResource WpfUiExpanderStyle}">
                                 <StackPanel>
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
                                         <TextBlock Text="APP ID"
@@ -585,6 +496,16 @@
                                                         PasswordChanged="BaiduSecret_Changed"
                                                         HorizontalAlignment="Right" />
                                     </DockPanel>
+                                    <Border Style="{StaticResource SettingDivider}" />
+                                    <DockPanel Style="{StaticResource SettingRowStyle}">
+                                        <TextBlock Text=""
+                                                   DockPanel.Dock="Left"
+                                                   Style="{StaticResource WpfUiTextBlockStyle}" /> 
+                                        <ui:Button DockPanel.Dock="Right" Content="申请百度翻译凭据"
+                                                   Style="{StaticResource WpfUiButtonStyle}"
+                                                   Click="ApplyForBaiduTranslate_Click" 
+                                                   HorizontalAlignment="Right" />
+                                    </DockPanel>
                                 </StackPanel>
                             </Expander>
                             
@@ -592,7 +513,7 @@
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <TextBlock TextWrapping="Wrap"
-                                               Text="用 JS 脚本实现翻译引擎（与「自定义 JS 脚本动作」同构：定义 JSAction(text)，返回值即译文）。选中后，内置「翻译」动作与脚本里的 Translation(text, from, to) 都走它；未选中则回退百度翻译。" />
+                                               Text="使用Javascript请求其他翻译服务，默认使用百度翻译" />
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
                                         <TextBlock Text="默认引擎"
                                                    DockPanel.Dock="Left"
@@ -602,39 +523,12 @@
                                                   SelectionChanged="TranslationEngine_Changed"
                                                   AutomationProperties.Name="默认翻译引擎" />
                                     </DockPanel>
-                                    <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                               Text="引擎脚本以联网沙箱运行：可用 await http.get/post；首次需通过「允许在线查询」同意门。当前语言通过全局变量 SNAP_SOURCE_LANGUAGE / SNAP_TARGET_LANGUAGE 提供。" />
                                     <StackPanel x:Name="TranslationEnginesPanel" Margin="0,8,0,0" />
                                     <ui:Button Content="添加翻译引擎" HorizontalAlignment="Left" Margin="0,8,0,0"
                                                Style="{StaticResource WpfUiButtonStyle}"
                                                Click="AddTranslationEngine_Click" />
                                 </StackPanel>
                             </ui:Card>
-
-                            <!-- Target Currency -->
-                            <!-- <StackPanel Orientation="Horizontal" Margin="0,8,0,0"> -->
-                            <!--     <TextBlock Text="Convert to:" Foreground="{DynamicResource TextFillColorPrimaryBrush}" -->
-                            <!--                VerticalAlignment="Center" Margin="0,0,8,0" /> -->
-                            <!--     <ComboBox x:Name="CurrencyCombo" Width="120" -->
-                            <!--               SelectionChanged="Currency_Changed" AutomationProperties.Name="CurrencyCombo"> -->
-                            <!--         <ComboBoxItem Content="USD" Tag="USD" /> -->
-                            <!--         <ComboBoxItem Content="EUR" Tag="EUR" /> -->
-                            <!--         <ComboBoxItem Content="GBP" Tag="GBP" /> -->
-                            <!--         <ComboBoxItem Content="SAR" Tag="SAR" /> -->
-                            <!--         <ComboBoxItem Content="AED" Tag="AED" /> -->
-                            <!--         <ComboBoxItem Content="KWD" Tag="KWD" /> -->
-                            <!--         <ComboBoxItem Content="JPY" Tag="JPY" /> -->
-                            <!--         <ComboBoxItem Content="CAD" Tag="CAD" /> -->
-                            <!--         <ComboBoxItem Content="AUD" Tag="AUD" /> -->
-                            <!--         <ComboBoxItem Content="CHF" Tag="CHF" /> -->
-                            <!--         <ComboBoxItem Content="CNY" Tag="CNY" /> -->
-                            <!--         <ComboBoxItem Content="INR" Tag="INR" /> -->
-                            <!--         <ComboBoxItem Content="BRL" Tag="BRL" /> -->
-                            <!--         <ComboBoxItem Content="KRW" Tag="KRW" /> -->
-                            <!--         <ComboBoxItem Content="TRY" Tag="TRY" /> -->
-                            <!--     </ComboBox> -->
-                            <!-- </StackPanel> -->
                         </StackPanel>
                     </ScrollViewer>
                     <ScrollViewer x:Name="CustomPage" Visibility="Collapsed"
@@ -658,7 +552,7 @@
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <TextBlock TextWrapping="Wrap"
-                                               Text="用Javascript自定义专属的文本处理脚本" />
+                                               Text="使用Javascript自定义专属的文本转换脚本" />
                                     <StackPanel x:Name="ScriptActionsPanel" Margin="0,8" />
                                     <ui:Button Content="添加脚本动作" HorizontalAlignment="Left"
                                                Style="{StaticResource WpfUiButtonStyle}"
@@ -670,26 +564,8 @@
                     <ScrollViewer x:Name="AppsPage" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="16">
-                            <!-- App Profiles -->
-                            <!-- <TextBlock Text="应用程序配置文件" Style="{StaticResource TitleText}" /> -->
-                            <!-- <ui:Card Style="{StaticResource WpfUiCardStyle}"> -->
-                            <!--     <StackPanel> -->
-                            <!--         <TextBlock Text="当所选应用程序位于前台时隐藏特定操作。" -->
-                            <!--                    FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" -->
-                            <!--                    Margin="0,0,0,4" -->
-                            <!--                    TextWrapping="Wrap" /> -->
-                            <!--         <StackPanel x:Name="AppProfilesPanel" Margin="0,0,0,4" /> -->
-                            <!--         <ui:Button Content="配置应用程序配置文件..." Style="{StaticResource WpfUiButtonStyle}" -->
-                            <!--                    Click="ConfigureAppProfiles_Click" -->
-                            <!--                    Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" -->
-                            <!--                    Foreground="{DynamicResource TextFillColorPrimaryBrush}" -->
-                            <!--                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" -->
-                            <!--                    Cursor="Hand" /> -->
-                            <!--     </StackPanel> -->
-                            <!-- </ui:Card> -->
-
                             <!-- Excluded Apps -->
-                            <TextBlock Text="排除的应用程序" Style="{StaticResource TitleText}" />
+                            <TextBlock Text="排除的应用程序（推荐将任何截图工具添加到此列表中）" Style="{StaticResource TitleText}" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <DockPanel Margin="0,0,0,4">
@@ -718,7 +594,7 @@
                     </ScrollViewer>
                 </Grid>
             </Grid>
-            <Grid Grid.Row="2" Margin="0,16,0,0">
+            <Grid Grid.Row="1" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -732,7 +608,6 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <ui:Button x:Name="RetrySaveButton" Content="重试保存" Visibility="Collapsed" Click="Save_Click"
                                Style="{StaticResource WpfUiButtonStyle}" />
-                    <!-- <ui:Button Content="关闭" Style="{StaticResource WpfUiButtonStyle}" Click="Close_Click" /> -->
                 </StackPanel>
             </Grid>
         </Grid>

@@ -606,6 +606,21 @@ public partial class SettingsWindow : FluentWindow
         BuildSearchEnginesList();
         QueueSave();
     }
+    
+    private void ApplyForBaiduTranslate_Click(object sender, RoutedEventArgs e)
+    {
+        const string url = "https://api.fanyi.baidu.com/manage/developer";
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Failed to open Baidu Translate application page: {ex.Message}");
+            MessageBox.Show($"无法打开浏览器访问 {url}。\n\n{ex.Message}",
+                "打开失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void AddCustomEngine_Click(object sender, RoutedEventArgs e)
     {
