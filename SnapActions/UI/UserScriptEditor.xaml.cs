@@ -17,7 +17,7 @@ namespace SnapActions.UI;
 ///     （动作实际执行时静默），方便用户调试脚本。
 ///     勾选「允许访问网络」后试跑会真的发请求，因此该状态下试跑做防抖（避免每次按键都发一次），
 ///     并且需要先通过在线查询同意门；未授权时自动试跑直接跳过（不再反复弹窗），保存前会再问一次。
-///     自定义翻译引擎有自己的编辑器 TranslationEngineEditor（引擎必然联网、且沙箱不暴露 Translation）。
+///     自定义翻译引擎有自己的编辑器 TranslationEngineEditor（引擎必然联网）。
 /// </summary>
 public partial class UserScriptEditor : Window
 {
@@ -30,7 +30,7 @@ public partial class UserScriptEditor : Window
     {
         // 编辑时从独立脚本文件读回源码（ScriptFile 优先），旧数据回退内嵌 Code。
         var sourceCode = source == null
-            ? "function JSAction(text) {\n\tconsole.log('日志输出：', text); // 试跑时显示在下方「console 输出」\n\treturn text;\n}"
+            ? "function JSAction(text) {\n\tconsole.log('日志输出：', text); // 试跑时显示在下方「console 输出」\n\treturn 'IKnowText：' + text;\n}"
             : ScriptActionStorage.LoadCode(source) ?? "";
         Action = new UserAction
         {
@@ -172,7 +172,7 @@ public partial class UserScriptEditor : Window
     {
         var network = AllowNetworkCheck.IsChecked == true;
         NetworkHintText.Visibility = network ? Visibility.Visible : Visibility.Collapsed;
-        NetworkHintText.Text = "勾选后沙箱会注入 await Translation(text, from, to)（走设置里选中的翻译引擎）与 await http.get/post(url, options)（返回 {status, ok, headers, body}）。网络请求受白名单、大小与次数限制：单请求 ≤8 秒、响应 ≤256KB、单次运行 ≤5 个请求。";
+        NetworkHintText.Text =  "勾选后沙箱会注入 await http.get/post(url, options)（返回 {status, ok, headers, body}）。网络请求受白名单、大小与次数限制：单请求 ≤8 秒、响应 ≤256KB、单次运行 ≤5 个请求。";
         SandboxHintText.Text = network
             ? "已允许网络：脚本可用 http 发起请求（受白名单、大小与次数限制），仍无法访问文件/剪贴板。"
             : "注意：脚本无法访问文件/网络/剪贴板；单次执行限时 2 秒，输出上限 128K 字符。";

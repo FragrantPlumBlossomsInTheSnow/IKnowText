@@ -48,9 +48,21 @@ def main():
     environment = os.environ.copy()
     environment["IKNOWTEXT_DATA_DIR"] = str(receipt / "ui")
     run(str(publish / f"{assembly_name}.exe"), "--self-test", env=environment, timeout=60)
-    result = json.loads((receipt / "ui" / "self-test.json").read_text(encoding="utf-8"))
-    if not result["passed"]:
-        raise RuntimeError(result["failure"])
+    environment = os.environ.copy()
+    environment["IKNOWTEXT_DATA_DIR"] = str(receipt / "ui")
+    result = subprocess.run(
+        [str(publish / f"{assembly_name}.exe"), "--self-test"],
+        cwd=ROOT, env=environment, timeout=60,
+        capture_output=True, text=True)
+    if result.returncode != 0:
+        print(result.stdout)
+        print(result.stderr, file=sys.stderr)
+        raise subprocess.CalledProcessError(result.returncode, result.args)
+    # self-test 把 checks/failure 写到数据目录 self-test.json。
+    receipt_json = json.loads((receipt / "ui" / "self-test.json").read_text(encoding="utf-8"))
+    if not receipt_json["passed"]:
+        raise RuntimeError(receipt_json["failure"])
+    result = receipt_json   # 后面 result["checks"] 要用
     files = sorted(p for p in publish.rglob("*") if p.is_file())
     (publish / "SHA256SUMS").write_text("".join(f"{checksum(p)}  {p.relative_to(publish).as_posix()}\n" for p in files), encoding="utf-8")
     version = project.findtext(".//Version")

@@ -30,11 +30,11 @@
                        Text="可用 console.log，输出只在「console 输出」显示" />
 
             <CheckBox x:Name="AllowNetworkCheck" Margin="0,12,0,0"
-                      Content="允许此脚本访问网络（Translation / http）"
+                      Content="允许此脚本访问网络（http）"
                       AutomationProperties.Name="允许此脚本访问网络"
                       Checked="AllowNetwork_Changed" Unchecked="AllowNetwork_Changed" />
             <!-- 文案在 UserScriptEditor.xaml.cs 的 UpdateSandboxHint 里按开关状态切换。
-                 自定义翻译引擎有自己的编辑器 TranslationEngineEditor（必联网、无 Translation）。 -->
+                 自定义翻译引擎有自己的编辑器 TranslationEngineEditor（必联网）。 -->
             <TextBlock x:Name="NetworkHintText" TextWrapping="Wrap" FontSize="12" Margin="0,4,0,0"
                        Visibility="Collapsed"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />

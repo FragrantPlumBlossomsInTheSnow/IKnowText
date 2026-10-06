@@ -154,21 +154,21 @@ public class ScriptNetworkTests
     {
         var runner = new JsScriptRunner();
         var run = await runner.RunAsync(
-            "function JSAction(text) { return typeof http + ':' + typeof Translation; }",
+            "function JSAction(text) { return typeof http; }",
             "x", allowNetwork: false);
         Assert.True(run.Success);
-        Assert.Equal("undefined:undefined", run.Text);
+        Assert.Equal("undefined", run.Text);
     }
 
     [Fact]
-    public async Task HttpAndTranslationAreInjectedWhenNetworkAllowed()
+    public async Task HttpIsInjectedWhenNetworkAllowed()
     {
         var runner = new JsScriptRunner();
         var run = await runner.RunAsync(
             "function JSAction(text) { return typeof http + ':' + typeof Translation; }",
             "x", allowNetwork: true);
         Assert.True(run.Success);
-        Assert.Equal("object:function", run.Text);
+        Assert.Equal("object:undefined", run.Text);   // ← http 注入，Translation 已移除
     }
 
     [Fact]
@@ -183,14 +183,13 @@ public class ScriptNetworkTests
     }
 
     [Fact]
-    public async Task EngineSandboxHasHttpAndLanguagesButNoTranslation()
+    public async Task EngineSandboxExposesHttpAndLanguages()
     {
-        // 翻译引擎自身的沙箱：有 http 与语言全局变量，但没有 Translation（否则引擎调用它会自递归）。
         var runner = new JsScriptRunner();
-        var sandbox = new JsScriptRunner.NetworkSandbox("en", "zh", ExposeTranslation: false);
+        var sandbox = new JsScriptRunner.NetworkSandbox("en", "zh");
         var run = await runner.RunAsync(
-            "function JSAction(text) { return typeof http + ':' + typeof Translation + ':' + SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE; }",
-            "x", allowNetwork: true, logs: null, ct: default, sandbox: sandbox);
+            "function Translate(text) { return typeof http + ':' + typeof Translation + ':' + SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE; }",
+            "x", allowNetwork: true, logs: null, ct: CancellationToken.None, sandbox: sandbox, entryPoint: "Translate");
         Assert.True(run.Success);
         Assert.Equal("object:undefined:en>zh", run.Text);
     }
@@ -204,7 +203,7 @@ public class ScriptNetworkTests
         {
             Id = "engine-svc",
             Name = "E",
-            Code = "function JSAction(text) { return SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE + ':' + text.toUpperCase(); }",
+            Code = "function Translate(text) { return SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE + ':' + text.toUpperCase(); }",
         };
         var translated = await TranslationEngineService.RunAsync(engine, "hello", "en", "zh");
         Assert.Equal("en>zh:HELLO", translated);

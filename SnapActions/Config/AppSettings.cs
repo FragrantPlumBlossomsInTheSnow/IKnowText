@@ -271,7 +271,7 @@ public class AppSettings
     /// <summary>DPAPI-protected, base64-encoded Baidu AppID + secret (encrypted at rest; never plaintext).</summary>
     public string BaiduCredentialsBlob { get; set; } = "";
 
-    /// <summary>自定义翻译引擎：与「自定义 JS 脚本动作」同构的 JS 脚本（入口 JSAction(text)，返回值即译文）。
+    /// <summary>自定义翻译引擎：与「自定义 JS 脚本动作」同构的 JS 脚本（入口 Translate(text)，返回值即译文）。
     /// 内置「翻译」动作优先用它；未选中/未启用时回退百度翻译。</summary>
     public List<UserAction> TranslationEngines { get; set; } = [];
 

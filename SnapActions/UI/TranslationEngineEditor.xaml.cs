@@ -11,12 +11,11 @@ using Brushes = System.Windows.Media.Brushes;
 namespace SnapActions.UI;
 
 /// <summary>
-///     自定义翻译引擎编辑器（独立于「JS 脚本动作」编辑器 UserScriptEditor）：名称 + JSAction(text) 脚本 +
+///     自定义翻译引擎编辑器（独立于「JS 脚本动作」编辑器 UserScriptEditor）：名称 + Translation(text) 脚本 +
 ///     即时试跑预览/日志。引擎与脚本动作的差别只有两点，所以这里不再靠开关复用那个编辑器：
 ///     1) 引擎必然联网（翻译引擎的意义就是请求外部服务），没有「允许访问网络」勾选项，
 ///        试跑一律防抖 + 先过「允许在线查询」同意门；
-///     2) 引擎沙箱不注入 <c>Translation</c>（否则引擎调用它会递归回自己），语言上下文由
-///        <c>SNAP_SOURCE_LANGUAGE</c> / <c>SNAP_TARGET_LANGUAGE</c> 提供。
+///     2) 语言上下文由 <c>SNAP_SOURCE_LANGUAGE</c> / <c>SNAP_TARGET_LANGUAGE</c> 提供。
 ///     界面在 TranslationEngineEditor.xaml，本文件只放行为。试跑用独立 JsScriptRunner 实例，
 ///     不碰生产共享缓存；沙箱 console 的输出只在这里显示（实际翻译时静默）。
 /// </summary>
@@ -65,7 +64,7 @@ public partial class TranslationEngineEditor : Window
         "// 可用：await http.get/post(url, options)\n" +
         "// SNAP_SOURCE_LANGUAGE = 获取设置的源语言\n" +
         "// SNAP_TARGET_LANGUAGE = 获取设置的目标语言。\n" +
-        "async function JSAction(text) {\n" +
+        "async function Translate(text) {\n" +
         "\t// TODO: 在这里调用你的翻译接口，例如：\n" +
         "\t// var resp = await http.post('https://api.example.com/translate',\n" +
         "\t//   JSON.stringify({ q: text, from: SNAP_SOURCE_LANGUAGE, to: SNAP_TARGET_LANGUAGE }),\n" +
@@ -114,7 +113,7 @@ public partial class TranslationEngineEditor : Window
 
         var sample = string.IsNullOrEmpty(SampleBox.Text) ? "test" : SampleBox.Text;
         using var cts = new CancellationTokenSource(JsScriptRunner.NetworkTimeout);
-        var run = await _runner.RunAsync(CodeBox.Text, sample, allowNetwork: true, logs: null, cts.Token, EngineSandbox);
+        var run = await _runner.RunAsync(CodeBox.Text, sample, allowNetwork: true, logs: null, cts.Token, EngineSandbox, entryPoint: "Translate");
         if (!run.Success)
         {
             StatusText.Text = run.Error ?? "试跑失败";
@@ -144,8 +143,8 @@ public partial class TranslationEngineEditor : Window
         _previewDebounce.Start();
     }
 
-    /// <summary>引擎沙箱：有 http/语言变量，但没有 Translation（见 TranslationEngineService 的同款设置）。</summary>
-    private static JsScriptRunner.NetworkSandbox EngineSandbox => new("", "", ExposeTranslation: false);
+    /// <summary>引擎沙箱：有 http/语言变量。</summary>
+    private static JsScriptRunner.NetworkSandbox EngineSandbox => new("", "");
 
     private async Task PreviewAsync()
     {
@@ -170,7 +169,7 @@ public partial class TranslationEngineEditor : Window
         var logLines = new List<string>();
         using var cts = new CancellationTokenSource(JsScriptRunner.NetworkTimeout);
         // 试跑用独立 runner（独立引擎缓存），不碰生产共享实例的状态。
-        var run = await _runner.RunAsync(CodeBox.Text, SampleBox.Text, allowNetwork: true, logLines, cts.Token, EngineSandbox);
+        var run = await _runner.RunAsync(CodeBox.Text, SampleBox.Text, allowNetwork: true, logLines, cts.Token, EngineSandbox, entryPoint: "Translate");
         if (run.Success)
         {
             PreviewBox.Text = run.Text ?? "";
@@ -188,14 +187,14 @@ public partial class TranslationEngineEditor : Window
         LogsBox.Text = string.Join(Environment.NewLine, logLines);
     }
 
-    private void GenerateJSAction_Click(object sender, RoutedEventArgs e)
+    private void GenerateTranslate_Click(object sender, RoutedEventArgs e)
     {
         var reg = FunctionMatch();
         if (reg.IsMatch(CodeBox.Text)) return;
-        var code = "async function JSAction(text) {\n\t// TODO: 调用翻译接口并返回译文\n\treturn text;\n}\n" + CodeBox.Text;
+        var code = "async function Translate(text) {\n\t// TODO: 调用翻译接口并返回译文\n\treturn text;\n}\n" + CodeBox.Text;
         CodeBox.Text = code;
     }
 
-    [GeneratedRegex(@"function\s*JSAction\s*\([\s\S]*\)\s*\{[\s\S]*\}")]
+    [GeneratedRegex(@"function\s*Translate\s*\([\s\S]*\)\s*\{[\s\S]*\}")]
     private static partial Regex FunctionMatch();
 }

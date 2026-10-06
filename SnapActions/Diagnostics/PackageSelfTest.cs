@@ -288,7 +288,7 @@ internal static class PackageSelfTest
             {
                 SettingsManager.Current.AllowOnlineLookups = true;
                 ((TextBox)GetField(engineEditor, "CodeBox")).Text =
-                    "async function JSAction(text) { return SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE + ':' + text.toUpperCase() + ':' + typeof Translation; }";
+                    "async function Translate(text) { return SNAP_SOURCE_LANGUAGE + '>' + SNAP_TARGET_LANGUAGE + ':' + text.toUpperCase() + ':' + typeof Translation; }";
                 ((TextBox)GetField(engineEditor, "SampleBox")).Text = "hey";
                 var previewTask = (Task)typeof(TranslationEngineEditor)
                     .GetMethod("PreviewAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
