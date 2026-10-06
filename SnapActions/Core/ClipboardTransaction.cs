@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
-using System.Windows;
+using System.Text;
+using SnapActions.Helpers;
+using DataFormats = System.Windows.DataFormats;
 
 namespace SnapActions.Core;
 
@@ -19,110 +21,25 @@ internal static class ClipboardTransaction
     private const uint CF_GDIOBJFIRST = 0x0300;
     private const uint CF_GDIOBJLAST = 0x03FF;
     private const uint GMEM_MOVEABLE = 0x0002;
+
     private static IntPtr _clipboardOwnerWindow;
+
     // 本应用写入、但尚未确认清理成功的剪贴板观察。合成复制若因锁竞争/观察漂移没能还原，
     // 剪贴板里留下的就是划词文本；下一次快照会把它误当“用户原内容”保护并恢复，泄漏因此
     // 固化并随每次划词传递。台账把自身残留标记出来，快照见到它按“剪贴板为空”处理
     // （恢复即清空），清理失败也能自愈。
     private static readonly object UnrestoredWriteGate = new();
+
     private static ClipboardObservation? _unrestoredWrite;
+
     // must still duplicate every one of them before clipboard-mutating capture is allowed.
     private static readonly HashSet<string> RoundTrippableFormats = new(StringComparer.Ordinal)
     {
-        System.Windows.DataFormats.UnicodeText, System.Windows.DataFormats.Text,
-        System.Windows.DataFormats.Rtf, System.Windows.DataFormats.Html,
-        System.Windows.DataFormats.CommaSeparatedValue, System.Windows.DataFormats.FileDrop,
-        System.Windows.DataFormats.Bitmap,
+        DataFormats.UnicodeText, DataFormats.Text,
+        DataFormats.Rtf, DataFormats.Html,
+        DataFormats.CommaSeparatedValue, DataFormats.FileDrop,
+        DataFormats.Bitmap
     };
-
-    internal readonly record struct ClipboardFormatRead(
-        string Format, bool ReadSucceeded, bool HasValue);
-
-    internal readonly record struct ClipboardObservation(
-        uint Sequence, IntPtr OwnerWindow, uint OwnerProcessId);
-
-    internal enum ClipboardMutationOwnership
-    {
-        None,
-        // Attributable single-step write; exact post-read observation may authorize restoration.
-        Owned,
-        // Target-owned multi-step write; readable, but never authoritative enough to restore over.
-        OwnedUnrestorable,
-        Ambiguous,
-    }
-
-    internal enum NativeClipboardHandleKind
-    {
-        GlobalMemory,
-        GdiObject,
-    }
-
-    private readonly record struct NativeClipboardWriteResult(
-        bool Success, bool NeedsRollback, ClipboardObservation Observation);
-
-    internal sealed class NativeClipboardFormatBackup(
-        uint format,
-        IntPtr handle,
-        NativeClipboardHandleKind handleKind)
-    {
-        internal uint Format { get; } = format;
-        internal IntPtr Handle { get; set; } = handle;
-        internal NativeClipboardHandleKind HandleKind { get; } = handleKind;
-    }
-
-    internal sealed class ClipboardSnapshot : IDisposable
-    {
-        private List<NativeClipboardFormatBackup>? _nativeBackups;
-
-        internal ClipboardSnapshot(
-            Dictionary<string, object> data,
-            ClipboardObservation observation)
-        {
-            Data = data;
-            Observation = observation;
-        }
-
-        internal ClipboardSnapshot(
-            Dictionary<string, object> data,
-            ClipboardObservation observation,
-            List<NativeClipboardFormatBackup> nativeBackups)
-            : this(data, observation)
-        {
-            _nativeBackups = nativeBackups;
-        }
-
-        internal Dictionary<string, object> Data { get; }
-        internal ClipboardObservation Observation { get; }
-        internal bool HasNativeRestorePayload =>
-            Volatile.Read(ref _nativeBackups) != null;
-
-        internal List<NativeClipboardFormatBackup>? TakeNativeBackups() =>
-            Interlocked.Exchange(ref _nativeBackups, null);
-
-        public void Dispose()
-        {
-            ReleaseNativeBackups();
-            GC.SuppressFinalize(this);
-        }
-
-        ~ClipboardSnapshot() => ReleaseNativeBackups();
-
-        private void ReleaseNativeBackups()
-        {
-            var backups = Interlocked.Exchange(ref _nativeBackups, null);
-            if (backups != null)
-                FreeNativeClipboardBackups(backups);
-        }
-    }
-
-    internal sealed record ClipboardNativeApi(
-        Func<IntPtr> GetOwnerWindow,
-        Func<IntPtr, bool> Open,
-        Func<ClipboardObservation> Observe,
-        Func<List<NativeClipboardFormatBackup>?> DuplicateFormats,
-        Func<bool> Empty,
-        Func<List<NativeClipboardFormatBackup>, bool> RestoreFormats,
-        Func<bool> Close);
 
     private static readonly ClipboardNativeApi NativeClipboard = new(
         GetValidClipboardOwnerWindow,
@@ -133,28 +50,33 @@ internal static class ClipboardTransaction
         backups => RestoreNativeClipboardBackups(backups),
         CloseClipboard);
 
-    private sealed class NativeClipboardWritePreparation(
-        IntPtr ownerWindow,
-        IntPtr textHandle,
-        List<NativeClipboardFormatBackup> backups)
-    {
-        internal IntPtr OwnerWindow { get; } = ownerWindow;
-        internal IntPtr TextHandle { get; set; } = textHandle;
-        internal List<NativeClipboardFormatBackup> Backups { get; } = backups;
-    }
+    // 把"我们自己产生的剪贴板更新"标记为不进历史/不同步/不被剪贴板监视器收录。格式名必须与
+    // 微软文档（Clipboard Formats → Cloud Clipboard and Clipboard History Formats）逐字一致：
+    // 名字写错时 RegisterClipboardFormat 只会新建一个系统不认识的自定义格式，标记形同虚设。
+    //   CanIncludeInClipboardHistory            —— DWORD 0 = 本次内容不进剪贴板历史
+    //   ExcludeClipboardContentFromMonitorProcessing —— 存在即让历史/云同步/剪贴板监视器整体跳过
+    private static readonly uint CF_CAN_INCLUDE_HISTORY =
+        RegisterClipboardFormat("CanIncludeInClipboardHistory");
 
-    internal static void SetClipboardOwnerWindow(IntPtr hwnd) =>
+    private static readonly uint CF_EXCLUDE_MONITOR =
+        RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing");
+
+    internal static void SetClipboardOwnerWindow(IntPtr hwnd)
+    {
         Interlocked.Exchange(ref _clipboardOwnerWindow, hwnd);
+    }
 
     internal static bool IsCompleteSnapshot(
         ClipboardObservation before,
         ClipboardObservation after,
-        IEnumerable<ClipboardFormatRead> reads) =>
-        before.Sequence != 0
-        && before == after
-        && reads.All(read =>
-            !RoundTrippableFormats.Contains(read.Format)
-            || (read.ReadSucceeded && read.HasValue));
+        IEnumerable<ClipboardFormatRead> reads)
+    {
+        return before.Sequence != 0
+               && before == after
+               && reads.All(read =>
+                   !RoundTrippableFormats.Contains(read.Format)
+                   || (read.ReadSucceeded && read.HasValue));
+    }
 
     internal static ClipboardMutationOwnership ClassifyClipboardMutation(
         ClipboardObservation before,
@@ -163,11 +85,10 @@ internal static class ClipboardTransaction
         uint expectedOwnerProcessId,
         bool targetStillValid)
     {
-        bool expectedOwner = after.OwnerWindow != IntPtr.Zero
-                             && after.OwnerProcessId != 0
-                             && after.OwnerProcessId == expectedOwnerProcessId;
+        var expectedOwner = after.OwnerWindow != IntPtr.Zero
+                            && after.OwnerProcessId != 0
+                            && after.OwnerProcessId == expectedOwnerProcessId;
         if (after.Sequence == before.Sequence)
-        {
             // Delayed rendering can transfer clipboard ownership before Windows increments the
             // sequence. An expected new owner is sufficient to read and trigger rendering.
             return requestDelivered
@@ -176,7 +97,6 @@ internal static class ClipboardTransaction
                    && after.OwnerWindow != before.OwnerWindow
                 ? ClipboardMutationOwnership.Owned
                 : ClipboardMutationOwnership.None;
-        }
 
         // One producer may advance the sequence several times while it empties the clipboard and
         // publishes multiple formats (Chromium does this for text, HTML, and internal metadata).
@@ -194,36 +114,38 @@ internal static class ClipboardTransaction
     }
 
     internal static bool CanReadClipboardMutation(
-        ClipboardMutationOwnership ownership) =>
-        ownership is ClipboardMutationOwnership.Owned
+        ClipboardMutationOwnership ownership)
+    {
+        return ownership is ClipboardMutationOwnership.Owned
             or ClipboardMutationOwnership.OwnedUnrestorable;
+    }
 
     internal static bool CanRestoreCapturedClipboard(
         ClipboardMutationOwnership ownership,
         ClipboardObservation accepted,
-        ClipboardObservation current) =>
-        ownership == ClipboardMutationOwnership.Owned
-        && CanRestoreClipboard(accepted, current);
+        ClipboardObservation current)
+    {
+        return ownership == ClipboardMutationOwnership.Owned
+               && CanRestoreClipboard(accepted, current);
+    }
 
     /// <summary>
-    /// Classifies a write performed while OpenClipboard was held continuously from the
-    /// pre-write observation through <paramref name="after"/>. Under that precondition, an
-    /// arbitrary sequence jump cannot hide an interleaved external producer.
+    ///     Classifies a write performed while OpenClipboard was held continuously from the
+    ///     pre-write observation through <paramref name="after" />. Under that precondition, an
+    ///     arbitrary sequence jump cannot hide an interleaved external producer.
     /// </summary>
     internal static ClipboardMutationOwnership ClassifyLockedClipboardWrite(
         ClipboardObservation before,
         ClipboardObservation after,
         uint writerProcessId)
     {
-        bool expectedOwner = after.OwnerWindow != IntPtr.Zero
-                             && after.OwnerProcessId != 0
-                             && after.OwnerProcessId == writerProcessId;
+        var expectedOwner = after.OwnerWindow != IntPtr.Zero
+                            && after.OwnerProcessId != 0
+                            && after.OwnerProcessId == writerProcessId;
         if (after.Sequence == before.Sequence)
-        {
             return expectedOwner && after.OwnerWindow != before.OwnerWindow
                 ? ClipboardMutationOwnership.Owned
                 : ClipboardMutationOwnership.None;
-        }
 
         return expectedOwner
             ? ClipboardMutationOwnership.Owned
@@ -235,30 +157,36 @@ internal static class ClipboardTransaction
         ClipboardObservation after,
         IntPtr writerWindow,
         uint writerProcessId,
-        bool clipboardClosed) =>
-        clipboardClosed
-        && after.OwnerWindow == writerWindow
-        && after.OwnerProcessId == writerProcessId
-        && ClassifyLockedClipboardWrite(before, after, writerProcessId)
-           == ClipboardMutationOwnership.Owned;
+        bool clipboardClosed)
+    {
+        return clipboardClosed
+               && after.OwnerWindow == writerWindow
+               && after.OwnerProcessId == writerProcessId
+               && ClassifyLockedClipboardWrite(before, after, writerProcessId)
+               == ClipboardMutationOwnership.Owned;
+    }
 
     internal static bool CanRestoreClipboard(
-        ClipboardObservation acceptedWrite, ClipboardObservation current) =>
-        IsValidRestoreBaseline(acceptedWrite)
-        && acceptedWrite == current;
+        ClipboardObservation acceptedWrite, ClipboardObservation current)
+    {
+        return IsValidRestoreBaseline(acceptedWrite)
+               && acceptedWrite == current;
+    }
 
     /// <summary>
-    /// 可作为恢复基线的剪贴板观察：序列号非 0（剪贴板曾写入、观察可信），
-    /// 或确认为空剪贴板（序列号 0 且所有者为空，快照为空）。空基线合法：恢复即清空。
+    ///     可作为恢复基线的剪贴板观察：序列号非 0（剪贴板曾写入、观察可信），
+    ///     或确认为空剪贴板（序列号 0 且所有者为空，快照为空）。空基线合法：恢复即清空。
     /// </summary>
-    private static bool IsValidRestoreBaseline(ClipboardObservation observation) =>
-        observation.Sequence != 0
-        || (observation.OwnerWindow == IntPtr.Zero && observation.OwnerProcessId == 0);
+    private static bool IsValidRestoreBaseline(ClipboardObservation observation)
+    {
+        return observation.Sequence != 0
+               || (observation.OwnerWindow == IntPtr.Zero && observation.OwnerProcessId == 0);
+    }
 
     /// <summary>
-    /// Holds the native clipboard exclusion lock continuously from the final ownership
-    /// observation through the restore mutation. External producers can only commit before
-    /// the observation (and be rejected) or after CloseClipboard (and remain newer).
+    ///     Holds the native clipboard exclusion lock continuously from the final ownership
+    ///     observation through the restore mutation. External producers can only commit before
+    ///     the observation (and be rejected) or after CloseClipboard (and remain newer).
     /// </summary>
     internal static bool TryRunLockedClipboardRestore(
         ClipboardObservation acceptedWrite,
@@ -269,8 +197,8 @@ internal static class ClipboardTransaction
     {
         if (!openClipboard()) return false;
 
-        bool restored = false;
-        bool closed = false;
+        var restored = false;
+        var closed = false;
         try
         {
             if (CanRestoreClipboard(acceptedWrite, observeClipboard()))
@@ -287,68 +215,84 @@ internal static class ClipboardTransaction
     internal static bool ContinuesOwnedClipboard(
         ClipboardObservation accepted,
         ClipboardObservation current,
-        uint expectedOwnerProcessId) =>
-        accepted.OwnerWindow != IntPtr.Zero
-        && current.Sequence != 0
-        && current.OwnerWindow == accepted.OwnerWindow
-        && current.OwnerProcessId == expectedOwnerProcessId;
+        uint expectedOwnerProcessId)
+    {
+        return accepted.OwnerWindow != IntPtr.Zero
+               && current.Sequence != 0
+               && current.OwnerWindow == accepted.OwnerWindow
+               && current.OwnerProcessId == expectedOwnerProcessId;
+    }
 
     /// <summary>
-    /// 观察是否由指定进程持有且可信：序列号非 0、属主窗口有效、属主进程匹配。
-    /// 合成复制用它判定"此刻剪贴板内容就是本次注入的产物"，从而愿意读取与清理。
-    /// 比 <see cref="ContinuesOwnedClipboard"/> 宽松——不要求两次观察属主窗口一致，因为目标进程
-    /// 多格式发布时会更换属主窗口；旧判据在这些情况下会放弃清理，把划词文本留在用户剪贴板上。
+    ///     观察是否由指定进程持有且可信：序列号非 0、属主窗口有效、属主进程匹配。
+    ///     合成复制用它判定"此刻剪贴板内容就是本次注入的产物"，从而愿意读取与清理。
+    ///     比 <see cref="ContinuesOwnedClipboard" /> 宽松——不要求两次观察属主窗口一致，因为目标进程
+    ///     多格式发布时会更换属主窗口；旧判据在这些情况下会放弃清理，把划词文本留在用户剪贴板上。
     /// </summary>
     internal static bool IsClipboardOwnedByProcess(
         ClipboardObservation observation,
-        uint processId) =>
-        observation.Sequence != 0
-        && observation.OwnerWindow != IntPtr.Zero
-        && processId != 0
-        && observation.OwnerProcessId == processId;
+        uint processId)
+    {
+        return observation.Sequence != 0
+               && observation.OwnerWindow != IntPtr.Zero
+               && processId != 0
+               && observation.OwnerProcessId == processId;
+    }
 
     /// <summary>记录一份未能清理的自身写入；观察不可用（序列号 0）时忽略，避免误标。</summary>
     internal static void NoteUnrestoredWrite(ClipboardObservation write)
     {
         if (write.Sequence == 0) return;
-        lock (UnrestoredWriteGate) _unrestoredWrite = write;
+        lock (UnrestoredWriteGate)
+        {
+            _unrestoredWrite = write;
+        }
     }
 
     internal static void ClearUnrestoredWrite()
     {
-        lock (UnrestoredWriteGate) _unrestoredWrite = null;
+        lock (UnrestoredWriteGate)
+        {
+            _unrestoredWrite = null;
+        }
     }
 
     /// <summary>当前剪贴板是否恰为本应用未清理的写入残留。</summary>
     private static bool IsUnrestoredWrite(ClipboardObservation current)
     {
         lock (UnrestoredWriteGate)
+        {
             return _unrestoredWrite is { } write && write == current;
+        }
     }
 
     internal static bool CanStartClipboardWrite(
-        ClipboardSnapshot snapshot, ClipboardObservation current) =>
-        snapshot.Observation.Sequence != 0
-        && snapshot.Observation == current;
+        ClipboardSnapshot snapshot, ClipboardObservation current)
+    {
+        return snapshot.Observation.Sequence != 0
+               && snapshot.Observation == current;
+    }
 
     internal static bool TryClaimClipboardMutationAtBoundary(
         SelectionOperation operation,
         ClipboardObservation expected,
-        ClipboardObservation current) =>
-        CanRestoreClipboard(expected, current)
-        && operation.TryClaim();
+        ClipboardObservation current)
+    {
+        return CanRestoreClipboard(expected, current)
+               && operation.TryClaim();
+    }
 
     internal static ClipboardObservation ObserveClipboard()
     {
-        uint sequenceBefore =
-            SnapActions.Helpers.NativeMethods.GetClipboardSequenceNumber();
-        IntPtr owner = GetClipboardOwner();
+        var sequenceBefore =
+            NativeMethods.GetClipboardSequenceNumber();
+        var owner = GetClipboardOwner();
         uint ownerProcessId = 0;
         if (owner != IntPtr.Zero)
             GetWindowThreadProcessId(owner, out ownerProcessId);
-        IntPtr ownerAfter = GetClipboardOwner();
-        uint sequenceAfter =
-            SnapActions.Helpers.NativeMethods.GetClipboardSequenceNumber();
+        var ownerAfter = GetClipboardOwner();
+        var sequenceAfter =
+            NativeMethods.GetClipboardSequenceNumber();
         if (sequenceBefore == 0
             || sequenceBefore != sequenceAfter
             || owner != ownerAfter
@@ -359,8 +303,8 @@ internal static class ClipboardTransaction
     }
 
     /// <summary>
-    /// Writes paste/action text only while the operation is current and the exact pre-write
-    /// clipboard observation still holds after OpenClipboard has excluded external writers.
+    ///     Writes paste/action text only while the operation is current and the exact pre-write
+    ///     clipboard observation still holds after OpenClipboard has excluded external writers.
     /// </summary>
     internal static async Task<ClipboardObservation?> TrySetClipboardTextForOperationAsync(
         SelectionOperation operation,
@@ -381,30 +325,27 @@ internal static class ClipboardTransaction
                 if (!operation.IsCurrent)
                     return false;
                 if (requireExactTarget)
-                {
                     if (currentTarget is not { } current
                         || !ForegroundGuard.Matches(operation.Target, current)
                         || !ForegroundGuard.StillValid(operation.Target))
                         return false;
-                }
 
                 nativeResult = TryCommitPreparedClipboardWrite(
                     operation, snapshot.Observation, preparation);
                 return nativeResult.Success;
             }
 
-            bool committed = requireExactTarget
+            var committed = requireExactTarget
                 ? await ForegroundGuard.TryRunWithExactInputTargetAsync(
                     operation.Target, current => Commit(current), operation.ValidateInput)
-                : Commit(currentTarget: null);
+                : Commit(null);
 
             if (!committed
                 && nativeResult.NeedsRollback
                 && nativeResult.Observation.Sequence != 0)
             {
                 await Application.Current.Dispatcher.InvokeAsync(
-                    () => RestoreClipboardIfUnchanged(
-                        snapshot, nativeResult.Observation));
+                    () => RestoreClipboardIfUnchanged(snapshot, nativeResult.Observation));
             }
 
             return committed ? nativeResult.Observation : null;
@@ -420,7 +361,7 @@ internal static class ClipboardTransaction
         Func<ClipboardObservation?> atomicWrite)
     {
         ClipboardObservation? written = null;
-        bool committed = operation.TryCommit(() =>
+        var committed = operation.TryCommit(() =>
         {
             written = atomicWrite();
             return written != null;
@@ -430,16 +371,18 @@ internal static class ClipboardTransaction
 
     internal static bool TryCommitClipboardMutation(
         SelectionOperation operation,
-        Func<bool> mutation) =>
-        operation.TryCommit(mutation);
+        Func<bool> mutation)
+    {
+        return operation.TryCommit(mutation);
+    }
 
     private static NativeClipboardWritePreparation? TryPrepareNativeClipboardWrite(
         ClipboardObservation expected, string text)
     {
-        IntPtr ownerWindow = GetValidClipboardOwnerWindow();
+        var ownerWindow = GetValidClipboardOwnerWindow();
         if (ownerWindow == IntPtr.Zero) return null;
 
-        IntPtr textHandle = CreateUnicodeTextHandle(text);
+        var textHandle = CreateUnicodeTextHandle(text);
         if (textHandle == IntPtr.Zero) return null;
 
         List<NativeClipboardFormatBackup>? backups = null;
@@ -457,10 +400,8 @@ internal static class ClipboardTransaction
                 backups = DuplicateClipboardFormats();
                 if (backups != null
                     && CanRestoreClipboard(expected, ObserveClipboard()))
-                {
                     preparation = new NativeClipboardWritePreparation(
                         ownerWindow, textHandle, backups);
-                }
             }
         }
         finally
@@ -483,16 +424,19 @@ internal static class ClipboardTransaction
         byte[] bytes;
         try
         {
-            bytes = new System.Text.UnicodeEncoding(
-                bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true)
+            bytes = new UnicodeEncoding(
+                    false, false, true)
                 .GetBytes(text + '\0');
         }
-        catch { return IntPtr.Zero; }
+        catch
+        {
+            return IntPtr.Zero;
+        }
 
-        IntPtr memory = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)bytes.Length);
+        var memory = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)bytes.Length);
         if (memory == IntPtr.Zero) return IntPtr.Zero;
 
-        IntPtr destination = GlobalLock(memory);
+        var destination = GlobalLock(memory);
         if (destination == IntPtr.Zero)
         {
             GlobalFree(memory);
@@ -509,34 +453,36 @@ internal static class ClipboardTransaction
             GlobalFree(memory);
             return IntPtr.Zero;
         }
+
         GlobalUnlock(memory);
         return memory;
     }
 
     private static List<NativeClipboardFormatBackup>? DuplicateClipboardFormats()
     {
-        int count = CountClipboardFormats();
+        var count = CountClipboardFormats();
         var backups = new List<NativeClipboardFormatBackup>(Math.Max(count, 0));
         uint previous = 0;
 
         while (true)
         {
             Marshal.SetLastPInvokeError(0);
-            uint format = EnumClipboardFormats(previous);
+            var format = EnumClipboardFormats(previous);
             if (format == 0)
             {
                 if (Marshal.GetLastPInvokeError() == 0) return backups;
                 FreeNativeClipboardBackups(backups);
                 return null;
             }
+
             if (!CanDuplicateClipboardFormat(format))
             {
                 FreeNativeClipboardBackups(backups);
                 return null;
             }
 
-            IntPtr source = GetClipboardData(format);
-            IntPtr duplicate = source == IntPtr.Zero
+            var source = GetClipboardData(format);
+            var duplicate = source == IntPtr.Zero
                 ? IntPtr.Zero
                 : OleDuplicateData(source, checked((ushort)format), GMEM_MOVEABLE);
             if (duplicate == IntPtr.Zero)
@@ -554,24 +500,26 @@ internal static class ClipboardTransaction
         }
     }
 
-    private static bool CanDuplicateClipboardFormat(uint format) =>
-        format <= ushort.MaxValue
-        && format != CF_METAFILEPICT
-        && format != CF_ENHMETAFILE
-        && format != CF_OWNERDISPLAY
-        && format != CF_DSPBITMAP
-        && format != CF_DSPMETAFILEPICT
-        && format != CF_DSPENHMETAFILE
-        && (format < CF_PRIVATEFIRST || format > CF_PRIVATELAST)
-        && (format < CF_GDIOBJFIRST || format > CF_GDIOBJLAST);
+    private static bool CanDuplicateClipboardFormat(uint format)
+    {
+        return format <= ushort.MaxValue
+               && format != CF_METAFILEPICT
+               && format != CF_ENHMETAFILE
+               && format != CF_OWNERDISPLAY
+               && format != CF_DSPBITMAP
+               && format != CF_DSPMETAFILEPICT
+               && format != CF_DSPENHMETAFILE
+               && (format < CF_PRIVATEFIRST || format > CF_PRIVATELAST)
+               && (format < CF_GDIOBJFIRST || format > CF_GDIOBJLAST);
+    }
 
     private static IntPtr GetValidClipboardOwnerWindow()
     {
-        IntPtr ownerWindow = Interlocked.CompareExchange(
+        var ownerWindow = Interlocked.CompareExchange(
             ref _clipboardOwnerWindow, IntPtr.Zero, IntPtr.Zero);
         if (ownerWindow == IntPtr.Zero || !IsWindow(ownerWindow))
             return IntPtr.Zero;
-        GetWindowThreadProcessId(ownerWindow, out uint processId);
+        GetWindowThreadProcessId(ownerWindow, out var processId);
         return processId == (uint)Environment.ProcessId
             ? ownerWindow
             : IntPtr.Zero;
@@ -586,10 +534,10 @@ internal static class ClipboardTransaction
             || !OpenClipboard(preparation.OwnerWindow))
             return default;
 
-        bool textTransferred = false;
-        bool rollbackAttempted = false;
-        bool rollbackComplete = false;
-        bool clipboardClosed = false;
+        var textTransferred = false;
+        var rollbackAttempted = false;
+        var rollbackComplete = false;
+        var clipboardClosed = false;
         try
         {
             // Final nonblocking linearization point: if a newer selection or dismissal arrived
@@ -600,20 +548,16 @@ internal static class ClipboardTransaction
             if (!EmptyClipboard())
                 return default;
 
-            IntPtr set = SetClipboardData(
+            var set = SetClipboardData(
                 CF_UNICODETEXT, preparation.TextHandle);
             textTransferred = set != IntPtr.Zero;
             if (textTransferred)
             {
                 preparation.TextHandle = IntPtr.Zero;
-            }
-            else
-            {
-                // The clipboard is already empty. Restore every pre-duplicated format while
-                // the exclusion lock is still held so an external writer cannot interleave.
-                rollbackAttempted = true;
-                rollbackComplete = RestoreNativeClipboardBackups(
-                    preparation.Backups);
+
+                // 用户点"粘贴"按钮时的剪贴板写入是粘贴机制的一部分，不是用户想保留的复制结果。
+                // 排除出剪贴板历史，否则每次粘贴都会在 Win+V 里多一条同样的文本。
+                MarkClipboardWritePrivate(SetClipboardData);
             }
         }
         finally
@@ -625,21 +569,21 @@ internal static class ClipboardTransaction
         // immediately after CloseClipboard. This post-close sample is the token callers use for
         // paste and any managed fallback restore.
         var after = ObserveClipboard();
-        bool stillOwnsClipboard =
+        var stillOwnsClipboard =
             after.OwnerWindow == preparation.OwnerWindow
             && after.OwnerProcessId == (uint)Environment.ProcessId;
 
         if (textTransferred)
         {
-            bool accepted = CanAcceptClosedClipboardWrite(
+            var accepted = CanAcceptClosedClipboardWrite(
                 expected,
                 after,
                 preparation.OwnerWindow,
                 (uint)Environment.ProcessId,
                 clipboardClosed);
             return new NativeClipboardWriteResult(
-                Success: accepted,
-                NeedsRollback: !accepted && stillOwnsClipboard,
+                accepted,
+                !accepted && stillOwnsClipboard,
                 after);
         }
 
@@ -647,32 +591,81 @@ internal static class ClipboardTransaction
         // only the still-current app-owned observation is eligible for the richer managed
         // fallback; a foreign post-close writer must be preserved.
         return new NativeClipboardWriteResult(
-            Success: false,
-            NeedsRollback: rollbackAttempted
-                           && !rollbackComplete
-                           && stillOwnsClipboard,
+            false,
+            rollbackAttempted
+            && !rollbackComplete
+            && stillOwnsClipboard,
             after);
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint RegisterClipboardFormat(string lpszFormat);
 
     internal static bool RestoreNativeClipboardBackups(
         List<NativeClipboardFormatBackup> backups,
         Func<uint, IntPtr, IntPtr>? setClipboardData = null)
     {
-        bool restored = true;
+        var restored = true;
+        var set = setClipboardData ?? SetClipboardData;
+
         foreach (var backup in backups)
         {
             if (backup.Handle == IntPtr.Zero) continue;
-            IntPtr set = setClipboardData != null
-                ? setClipboardData(backup.Format, backup.Handle)
-                : SetClipboardData(backup.Format, backup.Handle);
-            if (set == IntPtr.Zero)
+            if (set(backup.Format, backup.Handle) == IntPtr.Zero)
             {
                 restored = false;
                 continue;
             }
+
             backup.Handle = IntPtr.Zero;
         }
+
+        // ★ 顺序很重要：必须在所有恢复格式之后、CloseClipboard 之前。
+        // Windows 在 CloseClipboard 那一刻基于当前剪贴板内容判定是否收录进历史，
+        // 所以排除标记要作为本次会话最后写入的格式。
+        MarkClipboardWritePrivate(set);
+
         return restored;
+    }
+
+    /// <summary>
+    ///     给本次剪贴板更新打上"不进历史 / 不被监视"标记（两个格式都写，取并集语义）。
+    ///     只能在内容格式写完之后、<c>CloseClipboard</c> 之前调用。
+    /// </summary>
+    private static void MarkClipboardWritePrivate(Func<uint, IntPtr, IntPtr> set)
+    {
+        // 每进程只记一次：格式号非 0 即表示注册成功（名字与系统一致时 Windows 会返回它已注册的那个）。
+        if (Interlocked.CompareExchange(ref _markerLogged, 1, 0) == 0)
+            Log.Info($"Clipboard exclusion formats registered: history={CF_CAN_INCLUDE_HISTORY}, monitor={CF_EXCLUDE_MONITOR}");
+        SetClipboardExclusionMarker(CF_CAN_INCLUDE_HISTORY, set);
+        SetClipboardExclusionMarker(CF_EXCLUDE_MONITOR, set);
+    }
+
+    private static int _markerLogged;
+
+    private static void SetClipboardExclusionMarker(uint format, Func<uint, IntPtr, IntPtr> set)
+    {
+        if (format == 0) return; // RegisterClipboardFormat 失败：没有可用的格式号
+        var marker = CreateDwordHandle(0);
+        if (marker == IntPtr.Zero) return;
+        if (set(format, marker) != IntPtr.Zero) return; // 句柄所有权已转移给剪贴板
+        GlobalFree(marker);
+    }
+
+    private static IntPtr CreateDwordHandle(uint value)
+    {
+        var mem = GlobalAlloc(GMEM_MOVEABLE, (UIntPtr)sizeof(uint));
+        if (mem == IntPtr.Zero) return IntPtr.Zero;
+        var dst = GlobalLock(mem);
+        if (dst == IntPtr.Zero)
+        {
+            GlobalFree(mem);
+            return IntPtr.Zero;
+        }
+
+        Marshal.WriteInt32(dst, unchecked((int)value));
+        GlobalUnlock(mem);
+        return mem;
     }
 
     internal static bool TryReplaceClipboardContentsUnderLock(
@@ -696,6 +689,7 @@ internal static class ClipboardTransaction
             GlobalFree(preparation.TextHandle);
             preparation.TextHandle = IntPtr.Zero;
         }
+
         FreeNativeClipboardBackups(preparation.Backups);
     }
 
@@ -714,10 +708,10 @@ internal static class ClipboardTransaction
     }
 
     /// <summary>
-    /// Eagerly reads the managed clipboard formats used by actions, then duplicates every native
-    /// format for lossless restoration. Managed-only custom formats are deferred to that native
-    /// backup instead of rejecting common Chromium clipboards before duplication is attempted.
-    /// A failed required managed read, native duplication, or concurrent write rejects the snapshot.
+    ///     Eagerly reads the managed clipboard formats used by actions, then duplicates every native
+    ///     format for lossless restoration. Managed-only custom formats are deferred to that native
+    ///     backup instead of rejecting common Chromium clipboards before duplication is attempted.
+    ///     A failed required managed read, native duplication, or concurrent write rejects the snapshot.
     /// </summary>
     internal static ClipboardSnapshot? SnapshotClipboard()
     {
@@ -730,11 +724,12 @@ internal static class ClipboardTransaction
             if (IsUnrestoredWrite(observationBefore))
             {
                 ClearUnrestoredWrite();
-                SnapActions.Helpers.Log.Info("Clipboard snapshot: unreleased synthetic write treated as empty");
+                Log.Info("Clipboard snapshot: unreleased synthetic write treated as empty");
                 return new ClipboardSnapshot(
                     new Dictionary<string, object>(), observationBefore,
                     new List<NativeClipboardFormatBackup>());
             }
+
             // 剪贴板为空（序列号 0 且无任何格式）：快照平凡地“完整” —— 快照即空，恢复即清空。
             // 不能在下面走 IsCompleteSnapshot（它硬性要求 before.Sequence != 0，空剪贴板恒为 0，
             // 会把空剪贴板误判为“快照失败”，从而让合成键兜底被放弃）。
@@ -742,49 +737,51 @@ internal static class ClipboardTransaction
             {
                 var obsEmpty = ObserveClipboard();
                 return obsEmpty == observationBefore
-                    ? new ClipboardSnapshot(new Dictionary<string, object>(), obsEmpty, new List<NativeClipboardFormatBackup>())
+                    ? new ClipboardSnapshot(new Dictionary<string, object>(), obsEmpty,
+                        new List<NativeClipboardFormatBackup>())
                     : null;
             }
+
             var data = Clipboard.GetDataObject();
             if (data == null && CountClipboardFormats() != 0)
             {
-                SnapActions.Helpers.Log.Info("Clipboard snapshot failed: GetDataObject returned null but formats exist");
+                Log.Info("Clipboard snapshot failed: GetDataObject returned null but formats exist");
                 return null;
             }
+
             var snap = new Dictionary<string, object>();
             var reads = new List<ClipboardFormatRead>();
 
             if (data != null)
-            {
-                foreach (var fmt in data.GetFormats(autoConvert: false))
+                foreach (var fmt in data.GetFormats(false))
                 {
                     if (!RoundTrippableFormats.Contains(fmt))
                     {
-                        reads.Add(new ClipboardFormatRead(fmt, ReadSucceeded: false, HasValue: false));
+                        reads.Add(new ClipboardFormatRead(fmt, false, false));
                         continue;
                     }
 
                     try
                     {
-                        var obj = data.GetData(fmt, autoConvert: false);
+                        var obj = data.GetData(fmt, false);
                         reads.Add(new ClipboardFormatRead(
-                            fmt, ReadSucceeded: true, HasValue: obj != null));
+                            fmt, true, obj != null));
                         if (obj != null) snap[fmt] = obj;
                     }
                     catch
                     {
                         reads.Add(new ClipboardFormatRead(
-                            fmt, ReadSucceeded: false, HasValue: false));
+                            fmt, false, false));
                     }
                 }
-            }
 
             var observation = ObserveClipboard();
             if (!IsCompleteSnapshot(observationBefore, observation, reads))
             {
-                var failed = reads.Where(r => RoundTrippableFormats.Contains(r.Format) && (!r.ReadSucceeded || !r.HasValue))
+                var failed = reads.Where(r =>
+                        RoundTrippableFormats.Contains(r.Format) && (!r.ReadSucceeded || !r.HasValue))
                     .Select(r => r.Format).ToArray();
-                SnapActions.Helpers.Log.Info(
+                Log.Info(
                     $"Clipboard snapshot failed: incomplete read (seq {observationBefore.Sequence}->{observation.Sequence}, " +
                     $"failedFormats=[{string.Join(",", failed)}])");
                 return null;
@@ -793,14 +790,16 @@ internal static class ClipboardTransaction
             var nativeBackups = TryCaptureNativeClipboardBackups(observation);
             if (nativeBackups == null)
             {
-                SnapActions.Helpers.Log.Info("Clipboard snapshot failed: native format backup unavailable (clipboard locked by another process?)");
+                Log.Info(
+                    "Clipboard snapshot failed: native format backup unavailable (clipboard locked by another process?)");
                 return null;
             }
+
             return new ClipboardSnapshot(snap, observation, nativeBackups);
         }
         catch (Exception ex)
         {
-            SnapActions.Helpers.Log.Info($"Clipboard snapshot failed: {ex.GetType().Name}: {ex.Message}");
+            Log.Info($"Clipboard snapshot failed: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
@@ -808,12 +807,12 @@ internal static class ClipboardTransaction
     private static List<NativeClipboardFormatBackup>?
         TryCaptureNativeClipboardBackups(ClipboardObservation expected)
     {
-        IntPtr ownerWindow = GetValidClipboardOwnerWindow();
+        var ownerWindow = GetValidClipboardOwnerWindow();
         if (ownerWindow == IntPtr.Zero || !OpenClipboard(ownerWindow))
             return null;
 
         List<NativeClipboardFormatBackup>? backups = null;
-        bool stable = false;
+        var stable = false;
         bool closed;
         try
         {
@@ -835,20 +834,22 @@ internal static class ClipboardTransaction
     }
 
     /// <summary>
-    /// Consumes the snapshot's one-shot native payload and restores it only while the exact
-    /// accepted write is still current under one OpenClipboard lock.
+    ///     Consumes the snapshot's one-shot native payload and restores it only while the exact
+    ///     accepted write is still current under one OpenClipboard lock.
     /// </summary>
     internal static bool RestoreClipboardIfUnchanged(
         ClipboardSnapshot snapshot,
-        ClipboardObservation acceptedWrite) =>
-        RestoreClipboardIfUnchanged(snapshot, acceptedWrite, NativeClipboard);
+        ClipboardObservation acceptedWrite)
+    {
+        return RestoreClipboardIfUnchanged(snapshot, acceptedWrite, NativeClipboard);
+    }
 
     internal static bool RestoreClipboardIfUnchanged(
         ClipboardSnapshot snapshot,
         ClipboardObservation acceptedWrite,
         ClipboardNativeApi nativeClipboard)
     {
-        List<NativeClipboardFormatBackup>? original =
+        var original =
             snapshot.TakeNativeBackups();
         List<NativeClipboardFormatBackup>? rollback = null;
         try
@@ -856,14 +857,15 @@ internal static class ClipboardTransaction
             if (original == null)
             {
                 // 快照没有原生负载（一次性负载已被取走或构造时未提供）：无法还原，记为残留。
-                SnapActions.Helpers.Log.Info("Clipboard restore failed: snapshot has no native payload");
+                Log.Info("Clipboard restore failed: snapshot has no native payload");
                 NoteUnrestoredWrite(ObserveClipboard());
                 return false;
             }
-            IntPtr ownerWindow = nativeClipboard.GetOwnerWindow();
+
+            var ownerWindow = nativeClipboard.GetOwnerWindow();
             if (ownerWindow == IntPtr.Zero)
             {
-                SnapActions.Helpers.Log.Info("Clipboard restore failed: no own window to associate the clipboard with");
+                Log.Info("Clipboard restore failed: no own window to associate the clipboard with");
                 NoteUnrestoredWrite(ObserveClipboard());
                 return false;
             }
@@ -872,42 +874,43 @@ internal static class ClipboardTransaction
             // 会把合成复制的文本留在剪贴板上，因此与快照路径一样做短延迟重试；若期间剪贴板已
             // 漂移（不再是入账的那次写入），重试没有意义也不该覆盖第三方内容，直接放弃并清台账
             // （我们的写入已被覆盖，不存在残留）。
-            for (int attempt = 0; attempt < 3; attempt++)
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                if (attempt > 0) Thread.Sleep(30);
+                if (attempt > 0) Task.Delay(30);
                 if (TryRunLockedClipboardRestore(
-                    acceptedWrite,
-                    openClipboard: () => nativeClipboard.Open(ownerWindow),
-                    observeClipboard: nativeClipboard.Observe,
-                    restoreClipboard: () =>
-                    {
-                        if (original.Count == 0)
-                            return nativeClipboard.Empty();
-
-                        // Preserve the temporary clipboard as rollback material before EmptyClipboard.
-                        // Format reads can force delayed rendering, so recheck the exact accepted
-                        // observation after duplication and before the first mutation.
-                        if (rollback != null)
+                        acceptedWrite,
+                        () => nativeClipboard.Open(ownerWindow),
+                        nativeClipboard.Observe,
+                        () =>
                         {
-                            FreeNativeClipboardBackups(rollback);
-                            rollback = null;
-                        }
-                        rollback = nativeClipboard.DuplicateFormats();
-                        if (rollback == null
-                            || !CanRestoreClipboard(
-                                acceptedWrite, nativeClipboard.Observe()))
-                            return false;
+                            if (original.Count == 0)
+                                return nativeClipboard.Empty();
 
-                        // A failed SetClipboardData may leave a partial original. Remove it while the
-                        // lock is still held and put back the pre-mutation temporary clipboard.
-                        return TryReplaceClipboardContentsUnderLock(
-                            emptyClipboard: nativeClipboard.Empty,
-                            restoreDesired: () =>
-                                nativeClipboard.RestoreFormats(original),
-                            restoreRollback: () =>
-                                nativeClipboard.RestoreFormats(rollback));
-                    },
-                    closeClipboard: nativeClipboard.Close))
+                            // Preserve the temporary clipboard as rollback material before EmptyClipboard.
+                            // Format reads can force delayed rendering, so recheck the exact accepted
+                            // observation after duplication and before the first mutation.
+                            if (rollback != null)
+                            {
+                                FreeNativeClipboardBackups(rollback);
+                                rollback = null;
+                            }
+
+                            rollback = nativeClipboard.DuplicateFormats();
+                            if (rollback == null
+                                || !CanRestoreClipboard(
+                                    acceptedWrite, nativeClipboard.Observe()))
+                                return false;
+
+                            // A failed SetClipboardData may leave a partial original. Remove it while the
+                            // lock is still held and put back the pre-mutation temporary clipboard.
+                            return TryReplaceClipboardContentsUnderLock(
+                                nativeClipboard.Empty,
+                                () =>
+                                    nativeClipboard.RestoreFormats(original),
+                                () =>
+                                    nativeClipboard.RestoreFormats(rollback));
+                        },
+                        nativeClipboard.Close))
                 {
                     ClearUnrestoredWrite();
                     return true;
@@ -916,7 +919,7 @@ internal static class ClipboardTransaction
                 var current = ObserveClipboard();
                 if (!CanRestoreClipboard(acceptedWrite, current))
                 {
-                    SnapActions.Helpers.Log.Info(
+                    Log.Info(
                         $"Clipboard restore skipped: clipboard moved on " +
                         $"(acceptedSeq={acceptedWrite.Sequence}, nowSeq={current.Sequence})");
                     ClearUnrestoredWrite();
@@ -924,7 +927,7 @@ internal static class ClipboardTransaction
                 }
             }
 
-            SnapActions.Helpers.Log.Info("Clipboard restore failed: clipboard stayed locked across retries");
+            Log.Info("Clipboard restore failed: clipboard stayed locked across retries");
             NoteUnrestoredWrite(ObserveClipboard());
             return false;
         }
@@ -942,18 +945,27 @@ internal static class ClipboardTransaction
     }
 
     /// <summary>
-    /// Reads whatever text is already on the clipboard, with no clear / synthetic-copy dance. Used
-    /// by the opt-in "capture on real Ctrl+C" trigger, where the user has already copied the text —
-    /// so there is zero clipboard mutation and nothing for other apps to observe.
+    ///     Reads whatever text is already on the clipboard, with no clear / synthetic-copy dance. Used
+    ///     by the opt-in "capture on real Ctrl+C" trigger, where the user has already copied the text —
+    ///     so there is zero clipboard mutation and nothing for other apps to observe.
     /// </summary>
-    public static Task<string?> ReadCurrentClipboardTextAsync() => ReadClipboard();
+    public static Task<string?> ReadCurrentClipboardTextAsync()
+    {
+        return ReadClipboard();
+    }
 
     private static async Task<string?> ReadClipboard()
     {
         return await Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            try { return Clipboard.ContainsText() ? Clipboard.GetText() : null; }
-            catch { return null; }
+            try
+            {
+                return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            }
+            catch
+            {
+                return null;
+            }
         });
     }
 
@@ -1011,4 +1023,117 @@ internal static class ClipboardTransaction
     [DllImport("gdi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DeleteObject(IntPtr hObject);
+
+    internal readonly record struct ClipboardFormatRead(
+        string Format,
+        bool ReadSucceeded,
+        bool HasValue);
+
+    internal readonly record struct ClipboardObservation(
+        uint Sequence,
+        IntPtr OwnerWindow,
+        uint OwnerProcessId);
+
+    internal enum ClipboardMutationOwnership
+    {
+        None,
+
+        // Attributable single-step write; exact post-read observation may authorize restoration.
+        Owned,
+
+        // Target-owned multi-step write; readable, but never authoritative enough to restore over.
+        OwnedUnrestorable,
+        Ambiguous
+    }
+
+    internal enum NativeClipboardHandleKind
+    {
+        GlobalMemory,
+        GdiObject
+    }
+
+    private readonly record struct NativeClipboardWriteResult(
+        bool Success,
+        bool NeedsRollback,
+        ClipboardObservation Observation);
+
+    internal sealed class NativeClipboardFormatBackup(
+        uint format,
+        IntPtr handle,
+        NativeClipboardHandleKind handleKind)
+    {
+        internal uint Format { get; } = format;
+        internal IntPtr Handle { get; set; } = handle;
+        internal NativeClipboardHandleKind HandleKind { get; } = handleKind;
+    }
+
+    internal sealed class ClipboardSnapshot : IDisposable
+    {
+        private List<NativeClipboardFormatBackup>? _nativeBackups;
+
+        internal ClipboardSnapshot(
+            Dictionary<string, object> data,
+            ClipboardObservation observation)
+        {
+            Data = data;
+            Observation = observation;
+        }
+
+        internal ClipboardSnapshot(
+            Dictionary<string, object> data,
+            ClipboardObservation observation,
+            List<NativeClipboardFormatBackup> nativeBackups)
+            : this(data, observation)
+        {
+            _nativeBackups = nativeBackups;
+        }
+
+        internal Dictionary<string, object> Data { get; }
+        internal ClipboardObservation Observation { get; }
+
+        internal bool HasNativeRestorePayload =>
+            Volatile.Read(ref _nativeBackups) != null;
+
+        public void Dispose()
+        {
+            ReleaseNativeBackups();
+            GC.SuppressFinalize(this);
+        }
+
+        internal List<NativeClipboardFormatBackup>? TakeNativeBackups()
+        {
+            return Interlocked.Exchange(ref _nativeBackups, null);
+        }
+
+        ~ClipboardSnapshot()
+        {
+            ReleaseNativeBackups();
+        }
+
+        private void ReleaseNativeBackups()
+        {
+            var backups = Interlocked.Exchange(ref _nativeBackups, null);
+            if (backups != null)
+                FreeNativeClipboardBackups(backups);
+        }
+    }
+
+    internal sealed record ClipboardNativeApi(
+        Func<IntPtr> GetOwnerWindow,
+        Func<IntPtr, bool> Open,
+        Func<ClipboardObservation> Observe,
+        Func<List<NativeClipboardFormatBackup>?> DuplicateFormats,
+        Func<bool> Empty,
+        Func<List<NativeClipboardFormatBackup>, bool> RestoreFormats,
+        Func<bool> Close);
+
+    private sealed class NativeClipboardWritePreparation(
+        IntPtr ownerWindow,
+        IntPtr textHandle,
+        List<NativeClipboardFormatBackup> backups)
+    {
+        internal IntPtr OwnerWindow { get; } = ownerWindow;
+        internal IntPtr TextHandle { get; set; } = textHandle;
+        internal List<NativeClipboardFormatBackup> Backups { get; } = backups;
+    }
 }

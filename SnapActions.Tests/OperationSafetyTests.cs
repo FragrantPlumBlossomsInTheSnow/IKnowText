@@ -620,7 +620,10 @@ public class OperationSafetyTests
             });
 
         Assert.False(restored);
-        Assert.Equal([1u, 2u, 3u], transferredFormats);
+        // 备份格式按序写入；之后还会追加运行时注册的"不进剪贴板历史 / 不被监视"标记
+        // （格式 id 由 RegisterClipboardFormat 决定，具体值与数量不在此断言）。
+        Assert.Equal([1u, 2u, 3u], transferredFormats.Take(3));
+        Assert.True(transferredFormats.Count > 3, "末尾应追加剪贴板排除标记");
         Assert.Equal(IntPtr.Zero, backups[0].Handle);
         Assert.Equal(new IntPtr(102), backups[1].Handle);
         Assert.Equal(IntPtr.Zero, backups[2].Handle);
