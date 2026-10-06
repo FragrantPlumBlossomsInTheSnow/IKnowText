@@ -1143,22 +1143,20 @@ internal static class UiaSelectionProvider
             }
             if (ClipboardTransaction.IsClipboardOwnedByProcess(after, operation.Target.ProcessId))
             {
-                // 归属判定只要求两件事：注入确实投递了，且此刻剪贴板由目标进程持有——那就是本次合成
-                // 复制的产物。不再要求"能证明是我们的单步写入"：注入前的观察在剪贴板本为空（序列号 0）
-                // 时不可用，目标进程多格式发布还会更换属主窗口，旧判据在这些情况下会一律拒绝——
-                // 既读不到文本、又不清理，合成复制的内容就留在用户剪贴板上（restorable=False 的实际来源）。
-                // 清理的安全性不依赖这个判定：RestoreClipboardIfUnchanged 会在 OpenClipboard 锁内二次校验
-                // 基线，期间第三方的新写入只会让还原失败，而不会被覆盖。
                 text = await ClipboardTransaction.ReadCurrentClipboardTextAsync();
                 var afterRead = ClipboardTransaction.ObserveClipboard();
-                if (ClipboardTransaction.IsClipboardOwnedByProcess(afterRead, operation.Target.ProcessId))
+                // ★ 必须同时满足两件事才认账：
+                //   1. 读回了非空文本（Ctrl+Insert 复制出来的一定是文本，图片/文件就不是我们的产物）；
+                //   2. 读取完成后属主仍是目标进程（读取期间没被第三方改写）。
+                // 只要"读不到文本"，就放弃清理 —— 否则会把截图工具/画图/游戏写进剪贴板的内容
+                if (!string.IsNullOrEmpty(text)
+                    && ClipboardTransaction.IsClipboardOwnedByProcess(afterRead, operation.Target.ProcessId))
                 {
                     acceptedWrite = afterRead;
                 }
                 else
                 {
-                    text = null;               // 读取期间被第三方改写：文本不可信
-                    acceptedWrite = after;     // 仍按注入后的观察尝试清理（锁内校验不过则自动放弃）
+                    text = null;               // 剪贴板里不是文本：不是 Ctrl+Insert 的产物，绝不清理
                 }
                 break;
             }
