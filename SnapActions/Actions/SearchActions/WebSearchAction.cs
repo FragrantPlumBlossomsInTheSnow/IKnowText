@@ -5,12 +5,11 @@ using SnapActions.Helpers;
 
 namespace SnapActions.Actions.SearchActions;
 
-public partial class WebSearchAction(string id, string name, string iconKey, string urlTemplate,
+public partial class WebSearchAction(string id, string name, string urlTemplate,
     string lang = "", LangMode langMode = LangMode.Url) : IAction
 {
     public string Id => $"search_{id}";
     public string Name => name;
-    public string IconKey => iconKey;
     public ActionCategory Category => ActionCategory.Search;
 
     [GeneratedRegex(@"://\{1\}\.")]

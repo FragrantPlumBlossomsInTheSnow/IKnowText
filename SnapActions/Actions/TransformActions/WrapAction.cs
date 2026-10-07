@@ -6,7 +6,6 @@ public class WrapAction(string id, string name, string prefix, string suffix) : 
 {
     public string Id => id;
     public string Name => name;
-    public string IconKey => "";
     public ActionCategory Category => ActionCategory.Transform;
     public bool IsPreviewSafe => true;
 

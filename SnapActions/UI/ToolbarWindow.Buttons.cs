@@ -46,8 +46,6 @@ public partial class ToolbarWindow
     /// </summary>
     private static string? IconGlyphFor(IAction action)
     {
-        if (action.IconKey is { Length: > 0 } key && FluentGlyphs.TryGetValue(key, out var glyph))
-            return glyph;
         if (action.Id.StartsWith("search_", StringComparison.Ordinal)) return IconGlyphs.Search;
         return action.Id switch
         {
@@ -85,10 +83,7 @@ public partial class ToolbarWindow
             return JsBadge.CreateToolbarIcon();
         if (IconGlyphFor(action) is { } glyph)
             return CreateIcon(glyph, 16, (Brush)FindResource("TextFillColorPrimaryBrush"));
-        var geo = TryFindResource(action.IconKey) as Geometry;
-        return geo != null
-            ? new Path { Data = geo, Fill = (Brush)FindResource("TextFillColorPrimaryBrush"), Width = 16, Height = 16, Stretch = Stretch.Uniform }
-            : null;
+        return null;
     }
 
     internal void RebuildInlineActions()

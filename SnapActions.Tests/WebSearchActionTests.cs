@@ -29,16 +29,16 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_LangUrlMode_SubstitutesLanguage()
     {
-        var action = new WebSearchAction("g", "Google", "icon",
-            "https://www.google.com/search?q={0}&hl={1}", "fr", LangMode.Url);
+        var action = new WebSearchAction("g", "Google",
+            "https://www.google.com/search?q={0}&hl={1}", "fr");
         Assert.Equal("https://www.google.com/search?q=test&hl=fr", action.BuildUrl("test"));
     }
 
     [Fact]
     public void BuildUrl_LangUrlMode_HostPosition()
     {
-        var action = new WebSearchAction("w", "Wikipedia", "icon",
-            "https://{1}.wikipedia.org/w/index.php?search={0}", "ar", LangMode.Url);
+        var action = new WebSearchAction("w", "Wikipedia",
+            "https://{1}.wikipedia.org/w/index.php?search={0}", "ar");
         Assert.Equal("https://ar.wikipedia.org/w/index.php?search=test", action.BuildUrl("test"));
     }
 
@@ -48,8 +48,8 @@ public class WebSearchActionTests
     public void BuildUrl_LangUrlMode_EmptyLang_HostFallsBackToEn()
     {
         // Wikipedia template with empty lang should default to en. — never produce ".wikipedia.org"
-        var action = new WebSearchAction("w", "Wikipedia", "icon",
-            "https://{1}.wikipedia.org/w/index.php?search={0}", "", LangMode.Url);
+        var action = new WebSearchAction("w", "Wikipedia",
+            "https://{1}.wikipedia.org/w/index.php?search={0}");
         Assert.Equal("https://en.wikipedia.org/w/index.php?search=test", action.BuildUrl("test"));
     }
 
@@ -57,8 +57,8 @@ public class WebSearchActionTests
     public void BuildUrl_LangUrlMode_EmptyLang_DropsLangParam()
     {
         // Param like &lr=lang_{1} must be dropped entirely when lang is empty.
-        var action = new WebSearchAction("g", "Google", "icon",
-            "https://www.google.com/search?q={0}&lr=lang_{1}&hl={1}", "", LangMode.Url);
+        var action = new WebSearchAction("g", "Google",
+            "https://www.google.com/search?q={0}&lr=lang_{1}&hl={1}");
         // Both {1}-bearing params dropped; trailing & cleaned up.
         Assert.Equal("https://www.google.com/search?q=test", action.BuildUrl("test"));
     }
@@ -66,8 +66,8 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_LangUrlMode_EmptyLang_TrimsTrailingAmp()
     {
-        var action = new WebSearchAction("g", "Google", "icon",
-            "https://example.com/?q={0}&hl={1}", "", LangMode.Url);
+        var action = new WebSearchAction("g", "Google",
+            "https://example.com/?q={0}&hl={1}");
         Assert.Equal("https://example.com/?q=test", action.BuildUrl("test"));
     }
 
@@ -77,16 +77,16 @@ public class WebSearchActionTests
         // Custom engine with the {1} param FIRST: dropping "?hl={1}" used to leave
         // ".../search&q=test" — the '&' glued the query onto the path and browsers read it as a
         // path segment. The first '&' must be promoted back to '?'.
-        var action = new WebSearchAction("c", "Custom", "icon",
-            "https://example.com/search?hl={1}&q={0}", "", LangMode.Url);
+        var action = new WebSearchAction("c", "Custom",
+            "https://example.com/search?hl={1}&q={0}");
         Assert.Equal("https://example.com/search?q=test", action.BuildUrl("test"));
     }
 
     [Fact]
     public void BuildUrl_LangUrlMode_EmptyLang_MultipleLeadingLangParams_RepairsQuestionMark()
     {
-        var action = new WebSearchAction("c", "Custom", "icon",
-            "https://example.com/search?lr=lang_{1}&hl={1}&q={0}", "", LangMode.Url);
+        var action = new WebSearchAction("c", "Custom",
+            "https://example.com/search?lr=lang_{1}&hl={1}&q={0}");
         Assert.Equal("https://example.com/search?q=test", action.BuildUrl("test"));
     }
 
@@ -95,7 +95,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_LangQueryMode_AppendsLangColon()
     {
-        var action = new WebSearchAction("x", "Twitter/X", "icon",
+        var action = new WebSearchAction("x", "Twitter/X",
             "https://x.com/search?q={0}&f=top", "ja", LangMode.Query);
         Assert.Equal("https://x.com/search?q=hello%20lang%3Aja&f=top", action.BuildUrl("hello"));
     }
@@ -103,7 +103,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_LangQueryMode_EmptyLang_NoSuffix()
     {
-        var action = new WebSearchAction("x", "Twitter/X", "icon",
+        var action = new WebSearchAction("x", "Twitter/X",
             "https://x.com/search?q={0}&f=top", "", LangMode.Query);
         Assert.Equal("https://x.com/search?q=hello&f=top", action.BuildUrl("hello"));
     }
@@ -113,7 +113,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_LangNone_IgnoresLang()
     {
-        var action = new WebSearchAction("ddg", "DuckDuckGo", "icon",
+        var action = new WebSearchAction("ddg", "DuckDuckGo",
             "https://duckduckgo.com/?q={0}", "fr", LangMode.None);
         Assert.Equal("https://duckduckgo.com/?q=test", action.BuildUrl("test"));
     }

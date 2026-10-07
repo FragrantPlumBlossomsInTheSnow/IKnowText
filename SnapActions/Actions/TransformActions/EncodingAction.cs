@@ -2,11 +2,10 @@ using SnapActions.Detection;
 
 namespace SnapActions.Actions.TransformActions;
 
-public class EncodingAction(string id, string name, string iconKey, Func<string, string> transform) : IAction
+public class EncodingAction(string id, string name, Func<string, string> transform) : IAction
 {
     public string Id => $"enc_{id}";
     public string Name => name;
-    public string IconKey => iconKey;
     public ActionCategory Category => ActionCategory.Encode;
     public bool IsPreviewSafe => true;
 

@@ -56,14 +56,14 @@ public partial class ActionRegistry
             new CleanLinkAction(),
 
             // 转换操作
-            new CaseTransformAction("upper", "全大写", "", text => text.ToUpperInvariant()),
-            new CaseTransformAction("lower", "全小写", "", text => text.ToLowerInvariant()),
-            new CaseTransformAction("title", "标题式", "", ToTitleCase),
-            new CaseTransformAction("pascal", "大驼峰式", "", ToPascalCase),
-            new CaseTransformAction("camel", "小驼峰式", "", ToCamelCase),
-            new CaseTransformAction("snake", "下_划_线", "", ToSnakeCase),
-            new CaseTransformAction("kebab", "短-横-线", "", ToKebabCase),
-            new CaseTransformAction("reverse", "反转", "", ReverseGraphemes),
+            new CaseTransformAction("upper", "全大写", text => text.ToUpperInvariant()),
+            new CaseTransformAction("lower", "全小写", text => text.ToLowerInvariant()),
+            new CaseTransformAction("title", "标题式", ToTitleCase),
+            new CaseTransformAction("pascal", "大驼峰式", ToPascalCase),
+            new CaseTransformAction("camel", "小驼峰式", ToCamelCase),
+            new CaseTransformAction("snake", "下_划_线", ToSnakeCase),
+            new CaseTransformAction("kebab", "短-横-线", ToKebabCase),
+            new CaseTransformAction("reverse", "反转", ReverseGraphemes),
 
             new WhitespaceAction("trim", "去除首尾空格", text => text.Trim()),
             new WhitespaceAction("remove_extra_spaces", "去除多余空格", text => MyRegex1().Replace(text, " ")),
@@ -81,29 +81,35 @@ public partial class ActionRegistry
             new WrapAction("wrap_chinese_quotes", "「」", "「", "」"),
 
             // 编码操作
-            new EncodingAction("url_encode", "URL编码", "", Uri.EscapeDataString),
-            new EncodingAction("url_decode", "URL解码", "", Uri.UnescapeDataString),
-            new EncodingAction("base64_encode", "Base64编码", "",
+            new EncodingAction("url_encode", "URL编码", Uri.EscapeDataString),
+            new EncodingAction("url_decode", "URL解码", Uri.UnescapeDataString),
+            
+            new EncodingAction("base64_encode", "Base64编码",
                 text => Convert.ToBase64String(Encoding.UTF8.GetBytes(text))),
-            new EncodingAction("base64_decode", "Base64解码", "",
+            
+            new EncodingAction("base64_decode", "Base64解码",
                 text => new UTF8Encoding(false, true).GetString(Convert.FromBase64String(text))),
-            new EncodingAction("html_encode", "HTML编码", "",
+            
+            new EncodingAction("html_encode", "HTML编码",
                 text => WebUtility.HtmlEncode(text)),
-            new EncodingAction("html_decode", "HTML解码", "",
+            
+            new EncodingAction("html_decode", "HTML解码",
                 text => WebUtility.HtmlDecode(text)),
 
             // Hex / ROT13
-            new EncodingAction("hex_encode", "Hex编码", "",
+            new EncodingAction("hex_encode", "Hex编码",
                 text => Convert.ToHexString(Encoding.UTF8.GetBytes(text)).ToLowerInvariant()),
-            new EncodingAction("hex_decode", "Hex解码", "",
+            
+            new EncodingAction("hex_decode", "Hex解码",
                 text => new UTF8Encoding(false, true).GetString(Convert.FromHexString(text.Trim()))),
-            new EncodingAction("rot13", "ROT13", "", Rot13),
+            
+            new EncodingAction("rot13", "ROT13", Rot13),
 
             // 哈希操作
-            new EncodingAction("md5", "MD5", "", text => Hash(MD5.HashData, text)),
-            new EncodingAction("sha1", "SHA-1", "", text => Hash(SHA1.HashData, text)),
-            new EncodingAction("sha256", "SHA-256", "", text => Hash(SHA256.HashData, text)),
-            new EncodingAction("sha512", "SHA-512", "", text => Hash(SHA512.HashData, text))
+            new EncodingAction("md5", "MD5", text => Hash(MD5.HashData, text)),
+            new EncodingAction("sha1", "SHA-1", text => Hash(SHA1.HashData, text)),
+            new EncodingAction("sha256", "SHA-256", text => Hash(SHA256.HashData, text)),
+            new EncodingAction("sha512", "SHA-512", text => Hash(SHA512.HashData, text))
         ];
     }
 
@@ -187,11 +193,11 @@ public partial class ActionRegistry
             }
 
         if (contextActions.Count > 0)
-            groups.Add(new ActionGroup("Context", "", contextActions));
+            groups.Add(new ActionGroup("Context", contextActions));
         if (s.ShowPasteActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Paste).ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Paste", "", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Paste", list));
         }
 
         if (s.ShowTranslateActions)
@@ -199,19 +205,19 @@ public partial class ActionRegistry
             // 仅翻译动作进入 Translate 组；不可用 Transform 类别过滤，否则会把所有文本转换
             // 动作重复塞进 Translate 组，造成工具栏同一动作出现两次。
             var list = applicable.Where(a => a.Id == "translate").ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Translate", "", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Translate", list));
         }
 
         if (s.ShowTransformActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Transform).ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Transform", "", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Transform", list));
         }
 
         if (s.ShowEncodeActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Encode).ToList();
-            if (list.Count > 0) groups.Add(new ActionGroup("Encode", "", list));
+            if (list.Count > 0) groups.Add(new ActionGroup("Encode", list));
         }
 
         if (s.ShowSearchActions && !string.IsNullOrEmpty(text.Trim()))
@@ -219,10 +225,10 @@ public partial class ActionRegistry
             var searchActions = s.SearchEngines
                 .Where(e => e.Enabled && !disabled.Contains($"search_{e.Id}"))
                 .Select(e => (IAction)new WebSearchAction(
-                    e.Id, e.Name, "", e.UrlTemplate, langMode: e.LangMode))
+                    e.Id, e.Name, e.UrlTemplate, langMode: e.LangMode))
                 .ToList();
             if (searchActions.Count > 0)
-                groups.Add(new ActionGroup("Search", "", searchActions));
+                groups.Add(new ActionGroup("Search",  searchActions));
         }
 
         return groups;
@@ -268,7 +274,7 @@ public partial class ActionRegistry
             // Search actions are built from settings, not from _allActions
             return SettingsManager.Current.SearchEngines
                 .Select(e => (IAction)new WebSearchAction(
-                    e.Id, e.Name, "", e.UrlTemplate, langMode: e.LangMode))
+                    e.Id, e.Name, e.UrlTemplate, langMode: e.LangMode))
                 .ToList();
         var actions = _allActions.Where(a => a.Category == category).ToList();
         var userActions = SettingsManager.Current.EnableCustomActions
@@ -404,4 +410,4 @@ public partial class ActionRegistry
     private static partial Regex MyRegex1();
 }
 
-public record ActionGroup(string Name, string IconKey, List<IAction> Actions);
+public record ActionGroup(string Name, List<IAction> Actions);
