@@ -51,7 +51,6 @@ public partial class ActionRegistry
             new ConvertTimezoneAction(),
             new UnitConvertAction(),
             new TranslateAction(),
-            // new DictionaryAction(),
             new CurrencyConverterAction(),
             new CleanLinkAction(),
 

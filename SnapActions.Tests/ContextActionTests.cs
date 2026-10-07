@@ -50,34 +50,6 @@ public class ContextActionTests
         Assert.Equal(expected, OpenUrlAction.BuildUrl(text));
     }
 
-    // ── DictionaryAction.CanExecute (tightened in v1.5.3 B11) ────
-
-    [Theory]
-    [InlineData("hello")]
-    [InlineData("hello world")]
-    [InlineData("hello world foo")]
-    [InlineData("don't")]
-    [InlineData("twenty-one")]
-    public void Dictionary_CanExecuteOnDictionaryShapedText(string text)
-    {
-        var action = new DictionaryAction();
-        Assert.True(action.CanExecute(text, TextAnalysis.PlainText));
-    }
-
-    [Theory]
-    [InlineData("a")] // single letter — too short
-    [InlineData("hello world foo bar")] // 4 words — over limit
-    [InlineData("user@example.com")] // not plain text type
-    [InlineData("hello123")] // contains digits
-    [InlineData("foo_bar")] // contains underscore (code identifier)
-    [InlineData("foo.bar")] // contains dot
-    public void Dictionary_RejectsNonDictionaryText(string text)
-    {
-        var action = new DictionaryAction();
-        // Use the classifier so non-PlainText inputs go through the right path
-        Assert.False(action.CanExecute(text, Classify(text)));
-    }
-
     // ── CurrencyConverterAction.CanExecute (tightened in v1.5.3 B6) ──
 
     [Theory]
