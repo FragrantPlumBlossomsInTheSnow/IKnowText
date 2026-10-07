@@ -5,10 +5,10 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
-using iNKORE.UI.WPF.Modern.Controls.Primitives;
 using SnapActions.Actions;
 using SnapActions.Actions.UserActions;
 using SnapActions.Config;
+using SnapActions.Core;
 using SnapActions.Helpers;
 using Brushes = System.Windows.Media.Brushes;
 using CheckBox = System.Windows.Controls.CheckBox;
@@ -124,6 +124,7 @@ public partial class SettingsWindow : FluentWindow
         BuildAppProfilesList();
         LoadAdditionalSettings();
         ExcludedAppsBox.Text = string.Join("\n", s.ExcludedApps);
+        SyntheticWhitelistBox.Text = string.Join("\n", s.SyntheticFallbackWhitelist);
     }
 
     private static void SelectComboByTag(ComboBox combo, string tag, int fallback)
@@ -237,7 +238,7 @@ public partial class SettingsWindow : FluentWindow
                 Text = action.Name
             });
             DockPanel.SetDock(dP, Dock.Left);
-            
+
             var b = new Wpf.Ui.Controls.Button
             {
                 Style = (Style)FindResource("WpfUiButtonStyle"),
@@ -340,7 +341,7 @@ public partial class SettingsWindow : FluentWindow
                 try
                 {
                     if (p.Id == own || p.MainWindowHandle == IntPtr.Zero) continue;
-                    if (!string.IsNullOrEmpty(p.ProcessName) && !Core.ForegroundApp.IsOwnProcess(p.ProcessName))
+                    if (!string.IsNullOrEmpty(p.ProcessName) && !ForegroundApp.IsOwnProcess(p.ProcessName))
                         appNames.Add(p.ProcessName);
                 }
                 catch
@@ -606,7 +607,7 @@ public partial class SettingsWindow : FluentWindow
         BuildSearchEnginesList();
         QueueSave();
     }
-    
+
     private void ApplyForBaiduTranslate_Click(object sender, RoutedEventArgs e)
     {
         const string url = "https://api.fanyi.baidu.com/manage/developer";
@@ -674,6 +675,124 @@ public partial class SettingsWindow : FluentWindow
         QueueSave();
     }
 
+    private void SyntheticWhitelist_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_loading) return;
+        // 与其他文本编辑一样：不逐键改内存，交给 debounce tick 的 FlushPendingTextEdits 处理。
+        QueueSave();
+    }
+
+    private void AddSyntheticWhitelistApp_Click(object sender, RoutedEventArgs e)
+    {
+        // 复用"选择要排除的应用"那套进程选择器：唯一区别是这次写入合成兜底白名单。
+        var picker = new Window
+        {
+            Title = "选择要加入合成兜底白名单的应用",
+            Width = 320, Height = 420,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            ResizeMode = ResizeMode.CanResize,
+            Background = (Brush)FindResource("ApplicationBackgroundBrush")
+        };
+        var list = new ListBox
+        {
+            Background = (Brush)FindResource("CardBackgroundFillColorSecondaryBrush"),
+            Foreground = _textBrush,
+            BorderBrush = (Brush)FindResource("DividerStrokeColorDefaultBrush"),
+            FontFamily = new FontFamily("Consolas"),
+            Margin = new Thickness(8)
+        };
+
+        try
+        {
+            var ownPid = Environment.ProcessId;
+            var existing = new HashSet<string>(SettingsManager.Current.SyntheticFallbackWhitelist,
+                StringComparer.OrdinalIgnoreCase);
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in Process.GetProcesses())
+                try
+                {
+                    if (p.Id == ownPid) continue;
+                    if (p.MainWindowHandle == IntPtr.Zero) continue;
+                    var name = p.ProcessName;
+                    if (string.IsNullOrEmpty(name)) continue;
+                    if (existing.Contains(name)) continue;
+                    if (ForegroundApp.IsOwnProcess(name)) continue;
+                    names.Add(name);
+                }
+                catch
+                {
+                    /* access denied on system processes — skip */
+                }
+                finally
+                {
+                    p.Dispose();
+                }
+
+            foreach (var n in names) list.Items.Add(n);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Process enumeration failed: {ex.Message}");
+        }
+
+        list.MouseDoubleClick += (_, _) =>
+        {
+            if (list.SelectedItem is string s) AddSyntheticWhitelistAppName(s);
+            picker.Close();
+        };
+
+        var addBtn = new Button
+        {
+            Content = "添加", Padding = new Thickness(16, 4, 16, 4),
+            Background = (Brush)FindResource("SystemFillColorAttentionBrush"),
+            Foreground = (Brush)FindResource("ApplicationBackgroundBrush"),
+            BorderThickness = new Thickness(0),
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        addBtn.Click += (_, _) =>
+        {
+            if (list.SelectedItem is string s) AddSyntheticWhitelistAppName(s);
+            picker.Close();
+        };
+        var cancelBtn = new Button
+        {
+            Content = "取消", Padding = new Thickness(16, 4, 16, 4),
+            Background = (Brush)FindResource("CardBackgroundFillColorSecondaryBrush"),
+            Foreground = _textBrush,
+            BorderBrush = (Brush)FindResource("DividerStrokeColorDefaultBrush")
+        };
+        cancelBtn.Click += (_, _) => picker.Close();
+
+        var buttonRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(8, 0, 8, 8)
+        };
+        buttonRow.Children.Add(addBtn);
+        buttonRow.Children.Add(cancelBtn);
+
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(list, 0);
+        Grid.SetRow(buttonRow, 1);
+        grid.Children.Add(list);
+        grid.Children.Add(buttonRow);
+        picker.Content = grid;
+        picker.ShowDialog();
+    }
+
+    private void AddSyntheticWhitelistAppName(string name)
+    {
+        var current = SyntheticWhitelistBox.Text;
+        var endsWithNewline = current.EndsWith('\n') || current.EndsWith("\r\n", StringComparison.Ordinal);
+        var sep = string.IsNullOrEmpty(current) || endsWithNewline ? "" : "\n";
+        SyntheticWhitelistBox.Text = current + sep + name;
+        // TextChanged 会触发 QueueSave，无需手动保存。
+    }
+
     /// <summary>
     ///     Push any text-box-backed settings (ExcludedApps, 百度凭据) into SettingsManager.Current just
     ///     before a Save. Called from both the debounce tick and the window-close handler so a
@@ -682,6 +801,9 @@ public partial class SettingsWindow : FluentWindow
     private void FlushPendingTextEdits()
     {
         SettingsManager.Current.ExcludedApps = ExcludedAppsBox.Text
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
+        SettingsManager.Current.SyntheticFallbackWhitelist = SyntheticWhitelistBox.Text
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(a => a.Trim()).Where(a => a.Length > 0).ToList();
         // 百度凭据没有保存按钮，两个输入框就是唯一真相；值没变时 ReconcileBaidu 原样返回旧 blob。
@@ -766,7 +888,7 @@ public partial class SettingsWindow : FluentWindow
                     var name = p.ProcessName; // already without .exe
                     if (string.IsNullOrEmpty(name)) continue;
                     if (existing.Contains(name)) continue;
-                    if (Core.ForegroundApp.IsOwnProcess(name)) continue;
+                    if (ForegroundApp.IsOwnProcess(name)) continue;
                     names.Add(name);
                 }
                 catch

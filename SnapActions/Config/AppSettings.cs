@@ -198,7 +198,25 @@ public class AppSettings
     /// </summary>
     [System.Text.Json.Serialization.JsonConverter(typeof(PasteModeTriggerJsonConverter))]
     public PasteModeTrigger PasteModeTrigger { get; set; } = PasteModeTrigger.LongPress;
-    public List<string> ExcludedApps { get; set; } = [];
+    /// <summary>
+    ///     合成兜底白名单：只有这些应用（进程名，不含 .exe）才允许在 UIA 读不到选区时
+    ///     注入 Ctrl+Insert 取词。合成兜底是破坏性操作（注入按键 + 临时改动剪贴板），
+    ///     因此默认拒绝——只列你确实需要它的应用（典型是 Java Swing IDE）。
+    ///     不在白名单的应用照常走 UIA 只读路径，只是不会注入按键。
+    /// </summary>
+    public List<string> SyntheticFallbackWhitelist { get; set; } = GetDefaultSyntheticWhitelist();
+
+    public static List<string> GetDefaultSyntheticWhitelist() =>
+    [
+        // JetBrains 全家桶（Java Swing，UIA 覆盖不稳，需要合成兜底）
+        "rider64", "idea64", "goland64", "pycharm64", "webstorm64",
+        "clion64", "datagrip64", "rubymine64", "phpstorm64",
+    ];
+    public List<string> ExcludedApps { get; set; } = [
+        "SnippingTool",
+        "TextInputHost",
+        "rdpclip",
+    ];
     /// <summary>
     /// Tracks which "default ExcludedApps additions" generation this settings file has
     /// already absorbed. SettingsManager.MigrateExcludedAppsDefaults merges new entries

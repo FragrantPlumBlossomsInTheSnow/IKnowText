@@ -565,7 +565,10 @@
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="16">
                             <!-- Excluded Apps -->
-                            <TextBlock Text="排除的应用程序（推荐将任何截图工具添加到此列表中）" Style="{StaticResource TitleText}" />
+                            <TextBlock Text="排除的应用程序" Style="{StaticResource TitleText}" />
+                            <TextBlock Text="建议将游戏排除" FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <DockPanel Margin="0,0,0,4">
@@ -589,7 +592,34 @@
                                                 AutomationProperties.Name="ExcludedAppsBox" />
                                 </StackPanel>
                             </ui:Card>
-
+                            <TextBlock Text="合成兜底白名单" Style="{StaticResource TitleText}" />
+                            <TextBlock Text="只有进入白名单的程序才会触发合成键兜底" FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                            <ui:Card Style="{StaticResource WpfUiCardStyle}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,8,0,0">
+                                        <ui:Button DockPanel.Dock="Right" Content="添加正在运行的应用程序..."
+                                                   Style="{StaticResource WpfUiButtonStyle}"
+                                                   Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                   BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                                   Click="AddSyntheticWhitelistApp_Click" Cursor="Hand" />
+                                        <TextBlock Text="每行一个进程名称"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <ui:TextBox x:Name="SyntheticWhitelistBox" AcceptsReturn="True" MinHeight="100"
+                                                Margin="0,8,0,0"
+                                                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                                Padding="8" FontFamily="Consolas" FontSize="12"
+                                                TextChanged="SyntheticWhitelist_Changed"
+                                                AutomationProperties.Name="SyntheticFallbackWhitelistBox" />
+                                </StackPanel>
+                            </ui:Card>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

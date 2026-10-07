@@ -1,125 +1,177 @@
-using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;
 using SnapActions.Config;
+using SnapActions.Helpers;
 
 namespace SnapActions.Core;
 
 internal static class UiaSelectionProvider
 {
-    internal readonly record struct CaptureResult(
-        string? Text,
-        SelectionOperation Operation);
+    /// <summary>滚动后的冷却窗口（毫秒）：期间抑制合成键注入，避免拖动/滚轮后页面回卷到光标处。</summary>
+    private const long ScrollCooldownAfterScrollMs = 300;
 
-    internal readonly record struct SelectionGesture(
-        bool IsDrag,
-        int ClickCount,
-        int StartX,
-        int StartY,
-        int EndX,
-        int EndY);
+    private const int UiaCallTimeoutMs = 500;
+    private const int UiaBusyHandoffMs = 50;
 
-    internal readonly record struct Utf16Span(int Start, int Length)
-    {
-        internal int End => Start + Length;
-    }
+    /// <summary>
+    ///     Maximum UIA parent levels to walk when probing for a TextPattern. Same rationale as
+    ///     <see cref="ForegroundApp.IsTextInputAtPoint" />: leaf elements (a span / anchor / svg)
+    ///     usually don't expose TextPattern themselves even though the paragraph / document
+    ///     ancestor does.
+    /// </summary>
+    private const int TextPatternParentWalkDepth = 6;
+
+    private const int ChromiumGeometryLineLimit = 512;
 
     private static readonly SemaphoreSlim CaptureLock = new(1, 1);
+
+    private static readonly HashSet<string> UiaSkipApps = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "thunderbird"
+    };
+
+    /// <summary>
+    ///     Item-style control types that are NOT text. When the focused element is one of these
+    ///     AND exposes SelectionItemPattern AND we found no TextPattern up the tree, we treat the
+    ///     "selection" as an item selection (file in Explorer, desktop icon, list-box row, tree
+    ///     node) and suppress. Deliberately narrow — Pane / Custom / Document stay out because
+    ///     browsers and Electron focus those for real text contexts.
+    /// </summary>
+    private static readonly ControlType[] NonTextItemTypes =
+    [
+        ControlType.DataItem,
+        ControlType.ListItem,
+        ControlType.TreeItem
+    ];
 
     /// <summary>Reads through UI Automation only. Capturing can never synthesize copy or touch the clipboard.</summary>
     internal static async Task<CaptureResult> CaptureSelectedTextAsync(
         SelectionOperation operation, SelectionGesture gesture, int cursorX, int cursorY)
     {
-        CaptureResult Result(string? text) => new(
-            text?.Length <= SelectionSnapshot.MaximumTextLength ? text : null, operation);
+        CaptureResult Result(string? text)
+        {
+            return new CaptureResult(
+                text?.Length <= SelectionSnapshot.MaximumTextLength ? text : null, operation);
+        }
+
         await CaptureLock.WaitAsync();
         try
         {
             if (!await operation.CanInjectInputAsync())
             {
-                SnapActions.Helpers.Log.Info("Capture aborted: cannot inject input");
+                Log.Info("Capture aborted: cannot inject input");
                 return Result(null);
             }
+
             if (UiaSkipApps.Contains(ForegroundApp.GetActiveProcessName() ?? ""))
             {
-                SnapActions.Helpers.Log.Info("Capture aborted: app is UIA-skip listed");
+                Log.Info("Capture aborted: app is UIA-skip listed");
                 return Result(null);
             }
+
             var probe = await RunBoundedUiaAsync(
                 () => ProbeSelectionViaUIA(cursorX, cursorY, operation.Target.ProcessId,
-                    operation.Target.AutomationRuntimeId, gesture, preferExactCopy: false, acceptCursorPointText: true),
+                    operation.Target.AutomationRuntimeId, gesture, false, true),
                 new SelectionProbe(SelectionProbeOutcome.Unknown, null, "UIA busy or unavailable"),
-                busyHandoffMs: operation.Target.AutomationRuntimeId == null ? UiaBusyHandoffMs : 0);
-            if (!await operation.CanInjectInputAsync()) return Result(null);
+                operation.Target.AutomationRuntimeId == null ? UiaBusyHandoffMs : 0);
+            
+            if (!await operation.CanInjectInputAsync())
+            {
+                return Result(null);
+            }
+            
             operation = operation.WithTarget(BindProbeIdentity(operation.Target, probe));
             if (probe.Outcome == SelectionProbeOutcome.HasText)
             {
                 operation = operation.WithInputValidation(probe.ValidateInput);
                 return Result(probe.Text);
             }
+
             if (probe.Outcome is SelectionProbeOutcome.SuppressItemElement or SelectionProbeOutcome.UntrustedText)
             {
-                SnapActions.Helpers.Log.Info($"Capture aborted: probe outcome {probe.Outcome} ({(probe.Reason ?? "no reason")})");
+                Log.Info($"Capture aborted: probe outcome {probe.Outcome} ({probe.Reason ?? "no reason"})");
                 return Result(null);
             }
+
             var fallback = await RunBoundedUiaAsync(
                 () => CopyViaUIA(operation.Target.ProcessId, operation.Target.AutomationRuntimeId), null);
+            
             if (fallback is { } selected)
+            {
                 operation = operation.WithTarget(BindProbeIdentity(operation.Target, selected))
                     .WithInputValidation(selected.ValidateInput);
+            }
+            
             var uiaText = fallback?.Text;
             if (string.IsNullOrEmpty(uiaText))
             {
                 // UIA 全链路（聚焦树 + 光标点 + CopyViaUIA）都没读到选区，走合成键兜底前先记录
                 // 关键闸门状态，便于区分：只能注入但未勾选、滚动冷却中、还是注入后被拒。
-                SnapActions.Helpers.Log.Info(
+                Log.Info(
                     $"UIA produced no text (probe={probe.Outcome}, canInject={operation.CanInjectInput}, " +
                     $"scrollCooldown={MouseHook.IsRecentScroll(ScrollCooldownAfterScrollMs)}, syntheticKeys={UseSyntheticKeys()})");
             }
+            
+            if (!string.IsNullOrEmpty(uiaText))
+            {
+                return Result(operation.CanInjectInput ? uiaText : null);
+            }
             // UIA 永远优先。勾选“默认使用合成键”后，UIA 读不到选区才用合成复制键兜底
             // （Java Swing IDE 如 Rider、部分 Chromium）；未勾选则只走 UIA、绝不注入按键。
-            if (!string.IsNullOrEmpty(uiaText))
-                return Result(operation.CanInjectInput ? uiaText : null);
             if (!await operation.CanInjectInputAsync())
             {
-                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: cannot inject input after UIA returned empty");
+                Log.Info("Synthetic fallback skipped: cannot inject input after UIA returned empty");
                 return Result(null);
             }
+
             if (!UseSyntheticKeys())
             {
-                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: synthetic keys disabled in settings");
+                Log.Info("Synthetic fallback skipped: synthetic keys disabled in settings");
                 return Result(null);
             }
+
             if (MouseHook.IsRecentScroll(ScrollCooldownAfterScrollMs))
             {
-                SnapActions.Helpers.Log.Info("Synthetic fallback skipped: scroll cooldown active");
+                Log.Info("Synthetic fallback skipped: scroll cooldown active");
                 return Result(null);
             }
-            // 经精确前台目标校验、剪贴板事务读回并恢复原剪贴板。
+
+            // 触发合成键兜底，经精确前台目标校验、剪贴板事务读回并恢复原剪贴板。
             var synthetic = await TrySyntheticCopyAsync(operation);
-            if (!operation.CanInjectInput) return Result(null);
-            return !string.IsNullOrEmpty(synthetic) ? Result(synthetic) : Result(operation.CanInjectInput ? uiaText : null);
+            if (!operation.CanInjectInput)
+            {
+                return Result(null);
+            }
+            return !string.IsNullOrEmpty(synthetic)
+                ? Result(synthetic)
+                : Result(operation.CanInjectInput ? uiaText : null);
         }
         catch (Exception ex)
         {
-            SnapActions.Helpers.Log.Error("UIA capture", ex);
+            Log.Error("UIA capture", ex);
             return Result(null);
         }
-        finally { CaptureLock.Release(); }
+        finally
+        {
+            CaptureLock.Release();
+        }
     }
 
     internal static async Task<SelectionOperation> BindInputSelectionAsync(SelectionOperation operation)
     {
         if (!await operation.CanInjectInputAsync()) return operation.WithInputValidation(null);
         var probe = await RunBoundedUiaAsync(
-            () => CopyViaUIA(operation.Target.ProcessId, operation.Target.AutomationRuntimeId, allowEmpty: true), null);
+            () => CopyViaUIA(operation.Target.ProcessId, operation.Target.AutomationRuntimeId, true), null);
         return probe is { } selected
-            ? operation.WithTarget(BindProbeIdentity(operation.Target, selected)).WithInputValidation(selected.ValidateInput)
+            ? operation.WithTarget(BindProbeIdentity(operation.Target, selected))
+                .WithInputValidation(selected.ValidateInput)
             : operation.WithInputValidation(null);
     }
 
-    private static Func<bool>? CreateInputValidation(TextPattern pattern, TextPatternRange[] ranges, string expectedText)
+    private static Func<bool>? CreateInputValidation(TextPattern pattern, TextPatternRange[] ranges,
+        string expectedText)
     {
         try
         {
@@ -134,82 +186,46 @@ internal static class UiaSelectionProvider
                 if (!ForegroundApp.IsEditableFieldFocused()) return false;
                 var current = pattern.GetSelection();
                 if (current.Length != captured.Length) return false;
-                for (int i = 0; i < captured.Length; i++)
-                    if (captured[i].CompareEndpoints(TextPatternRangeEndpoint.Start, current[i], TextPatternRangeEndpoint.Start) != 0
-                        || captured[i].CompareEndpoints(TextPatternRangeEndpoint.End, current[i], TextPatternRangeEndpoint.End) != 0
+                for (var i = 0; i < captured.Length; i++)
+                    if (captured[i].CompareEndpoints(TextPatternRangeEndpoint.Start, current[i],
+                            TextPatternRangeEndpoint.Start) != 0
+                        || captured[i].CompareEndpoints(TextPatternRangeEndpoint.End, current[i],
+                            TextPatternRangeEndpoint.End) != 0
                         || current[i].GetText(SelectionSnapshot.MaximumTextLength + 1) != text[i])
                         return false;
                 return true;
             };
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
-    private static readonly HashSet<string> UiaSkipApps = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "thunderbird",
-    };
-
-    /// <summary>滚动后的冷却窗口（毫秒）：期间抑制合成键注入，避免拖动/滚轮后页面回卷到光标处。</summary>
-    private const long ScrollCooldownAfterScrollMs = 300;
-
     /// <summary>
-    /// 是否允许在 UIA 读不到选区时用合成复制键兜底（设置项“默认使用合成键”）。
-    /// 未勾选则只走 UIA、绝不注入按键。
+    ///     是否允许在 UIA 读不到选区时用合成复制键兜底（设置项“默认使用合成键”）。
+    ///     未勾选则只走 UIA、绝不注入按键。
     /// </summary>
-    private static bool UseSyntheticKeys() => SettingsManager.Current.UseSyntheticKeys;
-
-    private const int UiaCallTimeoutMs = 500;
-    private const int UiaBusyHandoffMs = 50;
+    private static bool UseSyntheticKeys()
+    {
+        return SettingsManager.Current.UseSyntheticKeys;
+    }
 
     /// <summary>
-    /// Runs a UIA call with a hard timeout and a shared pre-start single-flight gate. If a broken
-    /// provider blocks inside GetSelection/GetText, the await returns its fallback but the gate
-    /// stays occupied until that underlying call really exits. Calls normally fail fast while it
-    /// is occupied; the selection pre-gate may wait once for a short event-identity handoff, then
-    /// retry without ever admitting concurrent UIA workers.
+    ///     Runs a UIA call with a hard timeout and a shared pre-start single-flight gate. If a broken
+    ///     provider blocks inside GetSelection/GetText, the await returns its fallback but the gate
+    ///     stays occupied until that underlying call really exits. Calls normally fail fast while it
+    ///     is occupied; the selection pre-gate may wait once for a short event-identity handoff, then
+    ///     retry without ever admitting concurrent UIA workers.
     /// </summary>
     private static Task<T> RunBoundedUiaAsync<T>(
         Func<T> uiaCall,
         T onTimeout,
-        int busyHandoffMs = 0) =>
-        ForegroundGuard.RunBoundedAutomationAsync(
-            uiaCall, onTimeout, UiaCallTimeoutMs, busyHandoffMs);
-    /// <summary>
-    /// Maximum UIA parent levels to walk when probing for a TextPattern. Same rationale as
-    /// <see cref="ForegroundApp.IsTextInputAtPoint"/>: leaf elements (a span / anchor / svg)
-    /// usually don't expose TextPattern themselves even though the paragraph / document
-    /// ancestor does.
-    /// </summary>
-    private const int TextPatternParentWalkDepth = 6;
-
-    internal enum SelectionProbeOutcome
+        int busyHandoffMs = 0)
     {
-        /// <summary>UIA returned selected text that passed identity and geometry checks.</summary>
-        HasText,
-        /// <summary>UIA confirmed a selection, but its returned text is not trusted.
-        /// A later explicit user copy can still provide text.</summary>
-        ConfirmedTextPreferExact,
-        /// <summary>UIA returned text, but an exact clipboard-free gesture reconstruction was
-        /// unavailable or a double-click word did not match its selection length.</summary>
-        UntrustedText,
-        /// <summary>The focused element is a non-text item (Explorer file, desktop icon, list row).
-        /// Definitive — capture must not run (WM_COPY would copy the item's name).</summary>
-        SuppressItemElement,
-        /// <summary>A TextPattern was found but reported an empty selection. Usually means "no
-        /// selection", but some providers lie (report empty despite a real selection), so this is
-        /// a signal to try the remaining read-only UIA path.</summary>
-        EmptyTextPattern,
-        /// <summary>UIA could not establish a text selection.</summary>
-        Unknown,
+        return ForegroundGuard.RunBoundedAutomationAsync(
+            uiaCall, onTimeout, UiaCallTimeoutMs, busyHandoffMs);
     }
-
-    internal readonly record struct SelectionProbe(
-        SelectionProbeOutcome Outcome,
-        string? Text,
-        string? Reason,
-        string? AutomationRuntimeId = null,
-        Func<bool>? ValidateInput = null);
 
     internal static SelectionProbe ClassifyUiaSelection(
         string text,
@@ -221,22 +237,21 @@ internal static class UiaSelectionProvider
         bool requireGestureText = false,
         bool acceptGestureLengthMismatch = false)
     {
-        if (text.Length > SelectionSnapshot.MaximumTextLength || gestureText?.Length > SelectionSnapshot.MaximumTextLength)
-            return new SelectionProbe(SelectionProbeOutcome.UntrustedText, null, "Selection is too large", automationRuntimeId);
+        if (text.Length > SelectionSnapshot.MaximumTextLength ||
+            gestureText?.Length > SelectionSnapshot.MaximumTextLength)
+            return new SelectionProbe(SelectionProbeOutcome.UntrustedText, null, "Selection is too large",
+                automationRuntimeId);
         if ((fromCursorPoint && !acceptCursorPointText) || preferExactCopy)
-        {
             return new SelectionProbe(
                 SelectionProbeOutcome.ConfirmedTextPreferExact,
                 null,
                 "selection confirmed; exact copy preferred",
                 automationRuntimeId);
-        }
 
-        bool gestureDefinesSelection = !string.IsNullOrEmpty(gestureText)
-                                       && (acceptGestureLengthMismatch
-                                           || gestureText.Length == text.Length);
+        var gestureDefinesSelection = !string.IsNullOrEmpty(gestureText)
+                                      && (acceptGestureLengthMismatch
+                                          || gestureText.Length == text.Length);
         if (requireGestureText && !gestureDefinesSelection)
-        {
             return new SelectionProbe(
                 SelectionProbeOutcome.UntrustedText,
                 null,
@@ -244,7 +259,6 @@ internal static class UiaSelectionProvider
                     ? "Chromium gesture range was unavailable"
                     : "Chromium double-click range did not match the selected range length",
                 automationRuntimeId);
-        }
 
         return new SelectionProbe(
             SelectionProbeOutcome.HasText,
@@ -257,30 +271,20 @@ internal static class UiaSelectionProvider
 
     internal static ForegroundTarget BindProbeIdentity(
         ForegroundTarget target,
-        SelectionProbe probe) =>
-        target.IsComplete
-        && target.AutomationRuntimeId == null
-        && probe.AutomationRuntimeId != null
+        SelectionProbe probe)
+    {
+        return target.IsComplete
+               && target.AutomationRuntimeId == null
+               && probe.AutomationRuntimeId != null
             ? target with { AutomationRuntimeId = probe.AutomationRuntimeId }
             : target;
+    }
 
     /// <summary>
-    /// Item-style control types that are NOT text. When the focused element is one of these
-    /// AND exposes SelectionItemPattern AND we found no TextPattern up the tree, we treat the
-    /// "selection" as an item selection (file in Explorer, desktop icon, list-box row, tree
-    /// node) and suppress. Deliberately narrow — Pane / Custom / Document stay out because
-    /// browsers and Electron focus those for real text contexts.
+    ///     Reads selected text from the original focused element or gesture point.
+    ///     Chromium gestures require matching geometry to avoid adjacent bidi runs. Missing or
+    ///     ambiguous evidence stays unavailable; automatic capture never invokes a copy fallback.
     /// </summary>
-    private static readonly System.Windows.Automation.ControlType[] NonTextItemTypes =
-    [
-        System.Windows.Automation.ControlType.DataItem,
-        System.Windows.Automation.ControlType.ListItem,
-        System.Windows.Automation.ControlType.TreeItem,
-    ];
-
-    /// <summary>Reads selected text from the original focused element or gesture point.
-    /// Chromium gestures require matching geometry to avoid adjacent bidi runs. Missing or
-    /// ambiguous evidence stays unavailable; automatic capture never invokes a copy fallback.</summary>
     internal static SelectionProbe ProbeSelectionViaUIA(
         int cursorX,
         int cursorY,
@@ -303,9 +307,12 @@ internal static class UiaSelectionProvider
                     originalFocused, expectedRuntimeId))
                 return new SelectionProbe(
                     SelectionProbeOutcome.Unknown, null, "focused element identity changed");
-            string? RuntimeIdForResult() =>
-                expectedRuntimeId
-                ?? TryReadAutomationRuntimeId(originalFocused);
+
+            string? RuntimeIdForResult()
+            {
+                return expectedRuntimeId
+                       ?? TryReadAutomationRuntimeId(originalFocused);
+            }
 
             // Walk up looking for TextPattern. If ANY ancestor has a non-empty selection,
             // return that focused-tree text immediately. If we exhaust the walk and saw at
@@ -313,8 +320,8 @@ internal static class UiaSelectionProvider
             // saw TextPattern → fall through to the item-element check below.
             var walker = TreeWalker.RawViewWalker;
             var element = originalFocused;
-            bool sawAnyTextPattern = false;
-            for (int depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
+            var sawAnyTextPattern = false;
+            for (var depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
             {
                 try
                 {
@@ -325,25 +332,30 @@ internal static class UiaSelectionProvider
                         var ranges = tp.GetSelection();
                         if (ranges != null && ranges.Length > 0)
                         {
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r =>
+                                r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
                                 // 沿用旧版（v2.4.5 备份 TextCapture.cs）：不强制 Chromium 手势文本。
                                 // 扩展桥未连接时，RangeFromPoint 重建手势选区常失败，导致浏览器
                                 // 双击/拖拽划词全部 UntrustedText abort（2026-09-19 连败日志）。
                                 // UIA 读到的选区文本直接接受，读不到再走剪贴板/合成键兜底。
-                                bool requireGestureText = false;
+                                var requireGestureText = false;
                                 string? gestureText = null;
                                 var selected = ClassifyUiaSelection(
                                     combined,
-                                    fromCursorPoint: false,
-                                    preferExactCopy: preferExactCopy,
+                                    false,
+                                    preferExactCopy,
                                     automationRuntimeId: RuntimeIdForResult(),
                                     gestureText: gestureText,
                                     requireGestureText: requireGestureText,
                                     acceptGestureLengthMismatch: gesture.IsDrag);
-                                return selected with { ValidateInput = selected.Outcome == SelectionProbeOutcome.HasText
-                                    ? CreateInputValidation(tp, ranges, selected.Text!) : null };
+                                return selected with
+                                {
+                                    ValidateInput = selected.Outcome == SelectionProbeOutcome.HasText
+                                        ? CreateInputValidation(tp, ranges, selected.Text!)
+                                        : null
+                                };
                             }
                         }
                         // TextPattern at this level returned no selection text. Keep walking up
@@ -351,10 +363,19 @@ internal static class UiaSelectionProvider
                         // often expose TextPattern at multiple levels with the leaf empty).
                     }
                 }
-                catch { /* per-level UIA failure — try the parent */ }
+                catch
+                {
+                    /* per-level UIA failure — try the parent */
+                }
 
-                try { element = walker.GetParent(element); }
-                catch { break; }
+                try
+                {
+                    element = walker.GetParent(element);
+                }
+                catch
+                {
+                    break;
+                }
             }
 
             if (sawAnyTextPattern)
@@ -377,14 +398,18 @@ internal static class UiaSelectionProvider
             {
                 var selected = ClassifyUiaSelection(
                     pointSelection.Text,
-                    fromCursorPoint: true,
+                    true,
                     acceptCursorPointText: acceptCursorPointText,
                     automationRuntimeId: RuntimeIdForResult(),
                     gestureText: pointSelection.GestureText,
                     requireGestureText: pointSelection.RequireGestureText,
                     acceptGestureLengthMismatch: gesture.IsDrag);
-                return selected with { ValidateInput = selected.Outcome == SelectionProbeOutcome.HasText
-                    ? pointSelection.ValidateInput : null };
+                return selected with
+                {
+                    ValidateInput = selected.Outcome == SelectionProbeOutcome.HasText
+                        ? pointSelection.ValidateInput
+                        : null
+                };
             }
 
             // Layer C: check the originally-focused element for non-text item patterns —
@@ -401,7 +426,10 @@ internal static class UiaSelectionProvider
                         $"focused element is {ct.ProgrammaticName} with SelectionItemPattern",
                         RuntimeIdForResult());
             }
-            catch { /* couldn't read ControlType — fall through to Unknown */ }
+            catch
+            {
+                /* couldn't read ControlType — fall through to Unknown */
+            }
 
             return new SelectionProbe(
                 SelectionProbeOutcome.Unknown,
@@ -417,11 +445,11 @@ internal static class UiaSelectionProvider
     }
 
     /// <summary>
-    /// Rebuilds a Chromium selection from the mouse coordinates instead of trusting
-    /// TextPattern.GetSelection().GetText(), which can return an adjacent run for mixed RTL/LTR
-    /// content. Same-line drags select the characters whose visual centers fall inside the drag;
-    /// the visual line is then rotated back to the logical order exposed by the element name.
-    /// Double-click word expansion is accepted only when its UTF-16 length matches GetSelection.
+    ///     Rebuilds a Chromium selection from the mouse coordinates instead of trusting
+    ///     TextPattern.GetSelection().GetText(), which can return an adjacent run for mixed RTL/LTR
+    ///     content. Same-line drags select the characters whose visual centers fall inside the drag;
+    ///     the visual line is then rotated back to the logical order exposed by the element name.
+    ///     Double-click word expansion is accepted only when its UTF-16 length matches GetSelection.
     /// </summary>
     private static bool RequiresChromiumGestureText(
         AutomationElement element,
@@ -475,11 +503,11 @@ internal static class UiaSelectionProvider
         }
     }
 
-    private const int ChromiumGeometryLineLimit = 512;
-
-    private static bool IsRangeWithinDocument(TextPatternRange range, TextPatternRange document) =>
-        range.CompareEndpoints(TextPatternRangeEndpoint.Start, document, TextPatternRangeEndpoint.Start) >= 0
-        && range.CompareEndpoints(TextPatternRangeEndpoint.End, document, TextPatternRangeEndpoint.End) <= 0;
+    private static bool IsRangeWithinDocument(TextPatternRange range, TextPatternRange document)
+    {
+        return range.CompareEndpoints(TextPatternRangeEndpoint.Start, document, TextPatternRangeEndpoint.Start) >= 0
+               && range.CompareEndpoints(TextPatternRangeEndpoint.End, document, TextPatternRangeEndpoint.End) <= 0;
+    }
 
     private static string? TryReadChromiumDragFromGeometry(
         TextPattern textPattern,
@@ -517,10 +545,10 @@ internal static class UiaSelectionProvider
             cursor,
             TextPatternRangeEndpoint.Start);
 
-        var visualText = new System.Text.StringBuilder();
-        var selectedVisualText = new System.Text.StringBuilder();
+        var visualText = new StringBuilder();
+        var selectedVisualText = new StringBuilder();
         var selectedSpans = new List<Utf16Span>();
-        for (int unit = 0; unit <= ChromiumGeometryLineLimit; unit++)
+        for (var unit = 0; unit <= ChromiumGeometryLineLimit; unit++)
         {
             if (cursor.CompareEndpoints(
                     TextPatternRangeEndpoint.Start,
@@ -538,16 +566,14 @@ internal static class UiaSelectionProvider
                     TextPatternRangeEndpoint.End,
                     anchorLine,
                     TextPatternRangeEndpoint.End) > 0)
-            {
                 character.MoveEndpointByRange(
                     TextPatternRangeEndpoint.End,
                     anchorLine,
                     TextPatternRangeEndpoint.End);
-            }
 
             var characterText = character.GetText(SelectionSnapshot.MaximumTextLength + 1);
             if (characterText.Length == 0) return null;
-            int characterStart = visualText.Length;
+            var characterStart = visualText.Length;
             visualText.Append(characterText);
 
             if (IsCharacterInsideDrag(
@@ -575,8 +601,14 @@ internal static class UiaSelectionProvider
             return null;
         if (selectedSpans.Count == 0) return null;
         string automationName;
-        try { automationName = element.Current.Name; }
-        catch { automationName = string.Empty; }
+        try
+        {
+            automationName = element.Current.Name;
+        }
+        catch
+        {
+            automationName = string.Empty;
+        }
 
         var logicalText = MapVisualSelectionToLogicalText(
             visualText.ToString(), selectedSpans, automationName);
@@ -596,13 +628,13 @@ internal static class UiaSelectionProvider
         string selectedText, TextPatternRange[] selectedRanges)
     {
         if (selectedRanges.Length != 1 || string.IsNullOrWhiteSpace(selectedText)
-            || selectedText.Length > SelectionSnapshot.MaximumTextLength) return null;
+                                       || selectedText.Length > SelectionSnapshot.MaximumTextLength) return null;
         var selected = selectedRanges[0].Clone();
         if (!IsRangeWithinDocument(selected, document)) return null;
-        int lineOrder = anchorLine.CompareEndpoints(TextPatternRangeEndpoint.Start,
+        var lineOrder = anchorLine.CompareEndpoints(TextPatternRangeEndpoint.Start,
             focusLine, TextPatternRangeEndpoint.Start);
-        bool anchorFirst = gesture.StartY < gesture.EndY;
-        if (lineOrder != 0 && (lineOrder < 0) != anchorFirst) return null;
+        var anchorFirst = gesture.StartY < gesture.EndY;
+        if (lineOrder != 0 && lineOrder < 0 != anchorFirst) return null;
         var firstLine = anchorFirst ? anchorLine : focusLine;
         var lastLine = anchorFirst ? focusLine : anchorLine;
         if (selected.CompareEndpoints(TextPatternRangeEndpoint.Start, firstLine, TextPatternRangeEndpoint.Start) < 0
@@ -623,37 +655,43 @@ internal static class UiaSelectionProvider
         // UIA work may race an app render or a newer selection. Never accept geometry for stale text.
         var current = pattern.GetSelection();
         if (current.Length != 1 || !selected.Compare(current[0])
-            || current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) != selectedText) return null;
+                                || current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) != selectedText)
+            return null;
 
         var enclosing = selected.GetEnclosingElement();
-        if (enclosing.Current.ControlType != System.Windows.Automation.ControlType.Text)
+        if (enclosing.Current.ControlType != ControlType.Text)
             return ContainsRtlScript(selectedText) ? null : selectedText;
-        string logicalName = enclosing.Current.Name;
+        var logicalName = enclosing.Current.Name;
         if (logicalName.Length > SelectionSnapshot.MaximumTextLength) return null;
         if (logicalName.Contains(selectedText, StringComparison.Ordinal)) return selectedText;
 
         // Chromium can expose an RTL line break before its text, despite the Text element's
         // logical Name placing it after the line. Prove each line's rotation before using Name.
-        string firstText = firstLine.GetText(ChromiumGeometryLineLimit + 1);
-        string lastText = lastLine.GetText(ChromiumGeometryLineLimit + 1);
+        var firstText = firstLine.GetText(ChromiumGeometryLineLimit + 1);
+        var lastText = lastLine.GetText(ChromiumGeometryLineLimit + 1);
         var prefix = firstLine.Clone();
         prefix.MoveEndpointByRange(TextPatternRangeEndpoint.End, selected, TextPatternRangeEndpoint.Start);
-        int firstOffset = prefix.GetText(ChromiumGeometryLineLimit + 1).Length;
+        var firstOffset = prefix.GetText(ChromiumGeometryLineLimit + 1).Length;
         var lastPart = lastLine.Clone();
         if (selected.CompareEndpoints(TextPatternRangeEndpoint.End, lastLine, TextPatternRangeEndpoint.End) < 0)
             lastPart.MoveEndpointByRange(TextPatternRangeEndpoint.End, selected, TextPatternRangeEndpoint.End);
-        int lastLength = lastPart.GetText(ChromiumGeometryLineLimit + 1).Length;
-        string? logicalText = MapMultilineSelectionToLogicalText(firstText, lastText,
+        var lastLength = lastPart.GetText(ChromiumGeometryLineLimit + 1).Length;
+        var logicalText = MapMultilineSelectionToLogicalText(firstText, lastText,
             new Utf16Span(firstOffset, firstText.Length - firstOffset), new Utf16Span(0, lastLength),
             logicalName, selectedText);
         if (logicalText == null || enclosing.Current.Name != logicalName) return null;
         current = pattern.GetSelection();
         return current.Length == 1 && selected.Compare(current[0])
-            && current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) == selectedText ? logicalText : null;
+                                   && current[0].GetText(SelectionSnapshot.MaximumTextLength + 1) == selectedText
+            ? logicalText
+            : null;
     }
 
-    private static bool ContainsRtlScript(string text) => text.Any(character =>
-        character is >= '\u0590' and <= '\u08ff' or >= '\ufb1d' and <= '\ufdff' or >= '\ufe70' and <= '\ufeff');
+    private static bool ContainsRtlScript(string text)
+    {
+        return text.Any(character =>
+            character is >= '\u0590' and <= '\u08ff' or >= '\ufb1d' and <= '\ufdff' or >= '\ufe70' and <= '\ufeff');
+    }
 
     internal static string? MapMultilineSelectionToLogicalText(string firstVisualLine, string lastVisualLine,
         Utf16Span firstSelection, Utf16Span lastSelection, string logicalName, string selectedText)
@@ -672,8 +710,9 @@ internal static class UiaSelectionProvider
             if (match.HasValue && match.Value != candidate) return null;
             match = candidate;
         }
+
         if (match is not { } accepted || accepted.End - accepted.Start != selectedText.Length) return null;
-        string result = logicalName[accepted.Start..accepted.End];
+        var result = logicalName[accepted.Start..accepted.End];
         // Rotation may move a separator, but must never add, remove, or substitute selected characters.
         char[] expected = selectedText.ToCharArray(), actual = result.ToCharArray();
         Array.Sort(expected);
@@ -681,21 +720,21 @@ internal static class UiaSelectionProvider
         return expected.AsSpan().SequenceEqual(actual) ? result : null;
     }
 
-    private readonly record struct LogicalLineSelection(int LineStart, int LineLength, int Start, int End);
-
     private static List<LogicalLineSelection> FindLogicalLineSelections(string visualLine, Utf16Span selected,
         string logicalName)
     {
         var result = new List<LogicalLineSelection>();
         if (visualLine.Length is 0 or > ChromiumGeometryLineLimit || selected.Start < 0 || selected.Length <= 0
-            || selected.End > visualLine.Length || logicalName.Length > SelectionSnapshot.MaximumTextLength) return result;
-        for (int rotation = 0; rotation < visualLine.Length; rotation++)
+            || selected.End > visualLine.Length ||
+            logicalName.Length > SelectionSnapshot.MaximumTextLength) return result;
+        for (var rotation = 0; rotation < visualLine.Length; rotation++)
         {
-            int selectedStart = selected.Length == visualLine.Length ? 0
+            var selectedStart = selected.Length == visualLine.Length
+                ? 0
                 : (selected.Start - rotation + visualLine.Length) % visualLine.Length;
             if (selectedStart + selected.Length > visualLine.Length) continue;
-            string logicalLine = visualLine[rotation..] + visualLine[..rotation];
-            int offset = -1;
+            var logicalLine = visualLine[rotation..] + visualLine[..rotation];
+            var offset = -1;
             while ((offset = logicalName.IndexOf(logicalLine, offset + 1, StringComparison.Ordinal)) >= 0)
             {
                 var mapped = new LogicalLineSelection(offset, visualLine.Length, offset + selectedStart,
@@ -705,12 +744,16 @@ internal static class UiaSelectionProvider
                 result.Add(mapped);
             }
         }
+
         return result;
     }
 
-    private static bool IsTextRect(Rect rect) => !rect.IsEmpty && rect.Width > 1 && rect.Height > 0
-        && double.IsFinite(rect.Left) && double.IsFinite(rect.Top)
-        && double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom);
+    private static bool IsTextRect(Rect rect)
+    {
+        return !rect.IsEmpty && rect.Width > 1 && rect.Height > 0
+               && double.IsFinite(rect.Left) && double.IsFinite(rect.Top)
+               && double.IsFinite(rect.Right) && double.IsFinite(rect.Bottom);
+    }
 
     internal static bool HasSingleVisualLineGeometry(IReadOnlyList<Rect> rectangles, SelectionGesture gesture)
     {
@@ -718,7 +761,7 @@ internal static class UiaSelectionProvider
         if (text.Length == 0 || text.Max(rect => rect.Top) >= text.Min(rect => rect.Bottom)) return false;
         double top = text.Min(rect => rect.Top), bottom = text.Max(rect => rect.Bottom);
         return gesture.StartY >= top && gesture.StartY <= bottom
-            && gesture.EndY >= top && gesture.EndY <= bottom;
+                                     && gesture.EndY >= top && gesture.EndY <= bottom;
     }
 
     internal static bool MatchesMultilineSelectionGeometry(IReadOnlyList<Rect> selection,
@@ -732,11 +775,13 @@ internal static class UiaSelectionProvider
                 if (y < rect.Top || y > rect.Bottom) continue;
                 bounds.Union(rect);
             }
+
             return !bounds.IsEmpty;
         }
+
         if (!gesture.IsDrag || !TryLineBounds(anchorLine, gesture.StartY, out var anchor)
-            || !TryLineBounds(focusLine, gesture.EndY, out var focus)
-            || !(anchor.Bottom <= focus.Top || focus.Bottom <= anchor.Top)) return false;
+                            || !TryLineBounds(focusLine, gesture.EndY, out var focus)
+                            || !(anchor.Bottom <= focus.Top || focus.Bottom <= anchor.Top)) return false;
         var rectangles = selection.Where(IsTextRect).ToArray();
         if (rectangles.Length < 2) return false;
         double top = Math.Min(anchor.Top, focus.Top), bottom = Math.Max(anchor.Bottom, focus.Bottom);
@@ -746,15 +791,17 @@ internal static class UiaSelectionProvider
         {
             var row = rectangles.Where(rect => y >= rect.Top && y <= rect.Bottom).ToArray();
             // A selected wrapping space can extend just beyond TextUnit.Line's visible text.
-            double tolerance = Math.Max(2, line.Height / 4);
-            if (row.Length == 0 || row.Any(rect => rect.Left < line.Left - tolerance || rect.Right > line.Right + tolerance))
+            var tolerance = Math.Max(2, line.Height / 4);
+            if (row.Length == 0 ||
+                row.Any(rect => rect.Left < line.Left - tolerance || rect.Right > line.Right + tolerance))
                 return false;
-            double boundary = Math.Clamp(x, line.Left, line.Right);
+            var boundary = Math.Clamp(x, line.Left, line.Right);
             return row.Any(rect => Math.Abs(rect.Left - boundary) <= tolerance
-                || Math.Abs(rect.Right - boundary) <= tolerance);
+                                   || Math.Abs(rect.Right - boundary) <= tolerance);
         }
+
         return MatchesEndpoint(anchor, gesture.StartX, gesture.StartY)
-            && MatchesEndpoint(focus, gesture.EndX, gesture.EndY);
+               && MatchesEndpoint(focus, gesture.EndX, gesture.EndY);
     }
 
     internal static bool IsCharacterInsideDrag(
@@ -765,8 +812,7 @@ internal static class UiaSelectionProvider
         double maximumX = Math.Max(gesture.StartX, gesture.EndX);
         double minimumY = Math.Min(gesture.StartY, gesture.EndY);
         double maximumY = Math.Max(gesture.StartY, gesture.EndY);
-        bool hasNonCaretRectangle = rectangles.Any(
-            rectangle => rectangle.Width > 1.0 && rectangle.Height > 0);
+        var hasNonCaretRectangle = rectangles.Any(rectangle => rectangle.Width > 1.0 && rectangle.Height > 0);
 
         foreach (var rectangle in rectangles)
         {
@@ -776,7 +822,7 @@ internal static class UiaSelectionProvider
             // duplicate; a genuinely narrow character with no wider rectangle remains eligible.
             if (hasNonCaretRectangle && rectangle.Width <= 1.0) continue;
             if (rectangle.Bottom < minimumY || rectangle.Top > maximumY) continue;
-            double centerX = rectangle.Left + rectangle.Width / 2.0;
+            var centerX = rectangle.Left + rectangle.Width / 2.0;
             if (centerX >= minimumX && centerX <= maximumX) return true;
         }
 
@@ -801,7 +847,7 @@ internal static class UiaSelectionProvider
         foreach (var logicalLine in logicalLines)
         {
             if (logicalLine.Length != visualLine.Length) continue;
-            for (int rotation = 0; rotation < visualLine.Length; rotation++)
+            for (var rotation = 0; rotation < visualLine.Length; rotation++)
             {
                 if (!IsRotation(visualLine, logicalLine, rotation)) continue;
                 var mapped = selectedSpans
@@ -813,18 +859,20 @@ internal static class UiaSelectionProvider
                     .ToArray();
                 if (mapped.Any(span => span.End > logicalLine.Length)) continue;
 
-                int start = mapped[0].Start;
-                int end = mapped[0].End;
-                bool contiguous = true;
-                for (int index = 1; index < mapped.Length; index++)
+                var start = mapped[0].Start;
+                var end = mapped[0].End;
+                var contiguous = true;
+                for (var index = 1; index < mapped.Length; index++)
                 {
                     if (mapped[index].Start != end)
                     {
                         contiguous = false;
                         break;
                     }
+
                     end = mapped[index].End;
                 }
+
                 if (!contiguous) continue;
 
                 var result = logicalLine[start..end];
@@ -840,20 +888,18 @@ internal static class UiaSelectionProvider
         string logicalLine,
         int rotation)
     {
-        for (int index = 0; index < logicalLine.Length; index++)
-        {
+        for (var index = 0; index < logicalLine.Length; index++)
             if (logicalLine[index]
                 != visualLine[(index + rotation) % visualLine.Length])
                 return false;
-        }
         return true;
     }
 
     private static bool ContainsArabicAndLatin(string text)
     {
-        bool hasArabic = false;
-        bool hasLatin = false;
-        foreach (char character in text)
+        var hasArabic = false;
+        var hasLatin = false;
+        foreach (var character in text)
         {
             hasArabic |= character is >= '\u0600' and <= '\u06FF'
                 or >= '\u0750' and <= '\u077F'
@@ -863,30 +909,32 @@ internal static class UiaSelectionProvider
             hasLatin |= character is >= 'A' and <= 'Z'
                 or >= 'a' and <= 'z';
         }
+
         return hasArabic && hasLatin;
     }
 
     /// <summary>
-    /// Reads a non-empty text selection from the element under (<paramref name="x"/>,
-    /// <paramref name="y"/>) — walking up a few levels for the TextPattern the way the feed's
-    /// tweet text exposes it a level or two above the leaf under the cursor. Returns null when
-    /// there's no selection there (an Explorer file row, a desktop icon, a bare button). Runs on
-    /// the same worker thread as <see cref="ProbeSelectionViaUIA"/>; must not throw.
+    ///     Reads a non-empty text selection from the element under (<paramref name="x" />,
+    ///     <paramref name="y" />) — walking up a few levels for the TextPattern the way the feed's
+    ///     tweet text exposes it a level or two above the leaf under the cursor. Returns null when
+    ///     there's no selection there (an Explorer file row, a desktop icon, a bare button). Runs on
+    ///     the same worker thread as <see cref="ProbeSelectionViaUIA" />; must not throw.
     /// </summary>
-    private static (string Text, string? GestureText, bool RequireGestureText, Func<bool>? ValidateInput)? TryReadSelectionAtPoint(
-        int x,
-        int y,
-        uint expectedProcessId,
-        SelectionGesture gesture,
-        bool deriveGestureText)
+    private static (string Text, string? GestureText, bool RequireGestureText, Func<bool>? ValidateInput)?
+        TryReadSelectionAtPoint(
+            int x,
+            int y,
+            uint expectedProcessId,
+            SelectionGesture gesture,
+            bool deriveGestureText)
     {
         try
         {
-            var element = AutomationElement.FromPoint(new System.Windows.Point(x, y));
+            var element = AutomationElement.FromPoint(new Point(x, y));
             if (element == null) return null;
             if ((uint)element.Current.ProcessId != expectedProcessId) return null;
             var walker = TreeWalker.RawViewWalker;
-            for (int depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
+            for (var depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
             {
                 try
                 {
@@ -895,12 +943,13 @@ internal static class UiaSelectionProvider
                         var ranges = ((TextPattern)pat).GetSelection();
                         if (ranges != null && ranges.Length > 0)
                         {
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r =>
+                                r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (!string.IsNullOrEmpty(combined))
                             {
                                 // 沿用旧版：光标点路径同样不强制 Chromium 手势文本（原因同上，
                                 // 扩展桥未连接时手势重建失败会让浏览器划词全部 UntrustedText abort）。
-                                bool requireGestureText = false;
+                                var requireGestureText = false;
                                 string? gestureText = null;
                                 return (combined, gestureText, requireGestureText,
                                     CreateInputValidation((TextPattern)pat, ranges, combined));
@@ -908,20 +957,33 @@ internal static class UiaSelectionProvider
                         }
                     }
                 }
-                catch { /* per-level UIA failure — try the parent */ }
+                catch
+                {
+                    /* per-level UIA failure — try the parent */
+                }
 
-                try { element = walker.GetParent(element); }
-                catch { break; }
+                try
+                {
+                    element = walker.GetParent(element);
+                }
+                catch
+                {
+                    break;
+                }
             }
         }
-        catch { /* FromPoint / UIA failure — no rescue */ }
+        catch
+        {
+            /* FromPoint / UIA failure — no rescue */
+        }
+
         return null;
     }
 
     /// <summary>
-    /// Reads the current selection via UI Automation. Returns null when no focused element,
-    /// no TextPattern within the walk depth, no selection ranges, or any UIA failure. Runs on
-    /// a worker thread because UIA calls can take hundreds of ms in apps where a11y is cold.
+    ///     Reads the current selection via UI Automation. Returns null when no focused element,
+    ///     no TextPattern within the walk depth, no selection ranges, or any UIA failure. Runs on
+    ///     a worker thread because UIA calls can take hundreds of ms in apps where a11y is cold.
     /// </summary>
     private static SelectionProbe? CopyViaUIA(
         uint expectedProcessId, string? expectedRuntimeId, bool allowEmpty = false)
@@ -932,10 +994,10 @@ internal static class UiaSelectionProvider
             if (element == null) return null;
             if ((uint)element.Current.ProcessId != expectedProcessId) return null;
             if (!MatchesAutomationRuntimeId(element, expectedRuntimeId)) return null;
-            string? focusedRuntimeId = TryReadAutomationRuntimeId(element);
+            var focusedRuntimeId = TryReadAutomationRuntimeId(element);
 
             var walker = TreeWalker.RawViewWalker;
-            for (int depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
+            for (var depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
             {
                 try
                 {
@@ -948,20 +1010,35 @@ internal static class UiaSelectionProvider
                             // Range reads are bounded before their result reaches the coordinator. For
                             // discontiguous selections (rare — Ctrl-click in Excel-style
                             // grids) join with \n so the caller sees all of it.
-                            var combined = CombineSelectionRanges(ranges.Select(r => r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
+                            var combined = CombineSelectionRanges(ranges.Select(r =>
+                                r.GetText(SelectionSnapshot.MaximumTextLength + 1)));
                             if (allowEmpty || !string.IsNullOrEmpty(combined))
-                                return new SelectionProbe(SelectionProbeOutcome.HasText, combined, null, focusedRuntimeId,
+                                return new SelectionProbe(SelectionProbeOutcome.HasText, combined, null,
+                                    focusedRuntimeId,
                                     CreateInputValidation(tp, ranges, combined));
                         }
                     }
                 }
-                catch { /* per-level UIA failure — try the parent */ }
+                catch
+                {
+                    /* per-level UIA failure — try the parent */
+                }
 
-                try { element = walker.GetParent(element); }
-                catch { break; }
+                try
+                {
+                    element = walker.GetParent(element);
+                }
+                catch
+                {
+                    break;
+                }
             }
         }
-        catch { /* UIA failure */ }
+        catch
+        {
+            /* UIA failure */
+        }
+
         return null;
     }
 
@@ -977,7 +1054,7 @@ internal static class UiaSelectionProvider
     {
         try
         {
-            int[] runtimeId = element.GetRuntimeId();
+            var runtimeId = element.GetRuntimeId();
             return runtimeId.Length > 0
                 ? string.Join(",", runtimeId)
                 : null;
@@ -991,33 +1068,48 @@ internal static class UiaSelectionProvider
     // Keep the oversize signal for the normal rejection path without allocating an unbounded join.
     internal static string CombineSelectionRanges(IEnumerable<string> fragments)
     {
-        var result = new System.Text.StringBuilder();
-        int count = 0;
+        var result = new StringBuilder();
+        var count = 0;
         foreach (var fragment in fragments)
         {
-            if (++count > 256 || result.Length + fragment.Length + (result.Length > 0 ? 1 : 0) > SelectionSnapshot.MaximumTextLength)
+            if (++count > 256 || result.Length + fragment.Length + (result.Length > 0 ? 1 : 0) >
+                SelectionSnapshot.MaximumTextLength)
                 return new string('\0', SelectionSnapshot.MaximumTextLength + 1);
             if (fragment.Length == 0) continue;
             if (result.Length > 0) result.Append('\n');
             result.Append(fragment);
         }
+
         return result.ToString();
     }
 
     /// <summary>
-    /// 合成复制兜底：对 UI Automation 读不到选区的应用（Java Swing 等），注入 Ctrl+Insert 复制选区。
-    /// 整段受精确前台目标校验约束，快照→注入→读回→恢复到原剪贴板，杜绝污染用户剪贴板。
-    /// 剪贴板为空（没有可保护的内容）时仍允许注入，成功后把写入内容清空以恢复“空”状态。
+    ///     合成复制兜底：对 UI Automation 读不到选区的应用（Java Swing 等），注入 Ctrl+Insert 复制选区。
+    ///     整段受精确前台目标校验约束，快照→注入→读回→恢复到原剪贴板，杜绝污染用户剪贴板。
+    ///     剪贴板为空（没有可保护的内容）时仍允许注入，成功后把写入内容清空以恢复“空”状态。
     /// </summary>
     private static async Task<string?> TrySyntheticCopyAsync(SelectionOperation operation)
     {
+        // 白名单闸门：合成兜底是破坏性操作（注入按键 + 临时改动剪贴板），因此默认拒绝。
+        // 只有明确列在设置里的应用才允许——避免截图工具/画布/游戏等被误注入 Ctrl+Insert
+        // （它们会把这个键理解为"复制当前画布内容"），也避免未来任何未知应用被误伤。
+        // 不在白名单的应用照常走 UIA 只读路径，只是不会注入按键。
+        var app = ForegroundApp.GetActiveProcessName();
+        if (!SettingsManager.Current.SyntheticFallbackWhitelist
+                .Any(w => w.Equals(app, StringComparison.OrdinalIgnoreCase)))
+        {
+            Log.Info(
+                $"Synthetic fallback skipped: '{app}' not in whitelist " +
+                "(Settings → 应用 → 合成兜底白名单)");
+            return null;
+        }
         // 剪贴板可能被另一进程瞬时锁定（其正在复制/粘贴，持有 OpenClipboard 互斥，通常几十毫秒
         // 内释放）。此时 OLE 的 Clipboard.GetDataObject() 仍可能成功（走 OleGetClipboard，不占用
         // Win32 锁），而快照里的 Win32 OpenClipboard 备份会失败。若一次失败即放弃，会把一次
         // 瞬时锁定误判成"剪贴板被占用"，导致合成兜底整段跳过、划词失败。这里短延迟重试几次。
         ClipboardTransaction.ClipboardSnapshot? snapshot = null;
-        bool clipboardEmpty = false;
-        for (int attempt = 0; attempt < 4; attempt++)
+        var clipboardEmpty = false;
+        for (var attempt = 0; attempt < 4; attempt++)
         {
             if (attempt > 0) await Task.Delay(60);
             snapshot = await Application.Current.Dispatcher.InvokeAsync(
@@ -1026,18 +1118,26 @@ internal static class UiaSelectionProvider
             // 剪贴板为空时无需保护：仍允许合成注入（划词的兜底不因剪贴板为空而失效）。
             clipboardEmpty = await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                try { return Clipboard.GetDataObject() == null; }
-                catch { return false; }
+                try
+                {
+                    return Clipboard.GetDataObject() == null;
+                }
+                catch
+                {
+                    return false;
+                }
             });
             if (clipboardEmpty) break;
         }
+
         if (snapshot == null && !clipboardEmpty)
         {
             // 持续非空却无法快照（被其他进程长时间锁定等）：放弃，避免污染用户无法恢复的内容。
-            SnapActions.Helpers.Log.Info("Synthetic fallback skipped: clipboard occupied but snapshot failed");
+            Log.Info("Synthetic fallback skipped: clipboard occupied but snapshot failed");
             return null;
         }
-        SnapActions.Helpers.Log.Info(
+
+        Log.Info(
             "Synthetic copy fallback engaged (UIA produced no text); app=" +
             ForegroundApp.GetActiveProcessName());
         ClipboardTransaction.ClipboardObservation? acceptedWrite = null;
@@ -1046,12 +1146,13 @@ internal static class UiaSelectionProvider
             var before = ClipboardTransaction.ObserveClipboard();
             if (snapshot != null && before != snapshot.Observation)
             {
-                SnapActions.Helpers.Log.Info("Synthetic fallback aborted: clipboard changed between snapshot and copy");
+                Log.Info("Synthetic fallback aborted: clipboard changed between snapshot and copy");
                 return null;
             }
+
             if (!await operation.CanInjectInputAsync())
             {
-                SnapActions.Helpers.Log.Info("Synthetic fallback aborted: input rejected before copy");
+                Log.Info("Synthetic fallback aborted: input rejected before copy");
                 return null;
             }
 
@@ -1069,10 +1170,10 @@ internal static class UiaSelectionProvider
             {
                 if (snapshot != null)
                 {
-                    bool restored = false;
+                    var restored = false;
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                         restored = ClipboardTransaction.RestoreClipboardIfUnchanged(snapshot, ak));
-                    SnapActions.Helpers.Log.Info(
+                    Log.Info(
                         $"Clipboard restore finished: ok={restored}, acceptedSeq={ak.Sequence}");
                 }
                 else
@@ -1082,7 +1183,7 @@ internal static class UiaSelectionProvider
                     // 仍失败则把残留记进台账，下一次快照按“空”处理它，泄漏不会继承下去。
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        for (int attempt = 0; attempt < 3; attempt++)
+                        for (var attempt = 0; attempt < 3; attempt++)
                         {
                             if (attempt > 0) Thread.Sleep(20);
                             try
@@ -1092,21 +1193,26 @@ internal static class UiaSelectionProvider
                                 {
                                     Clipboard.Clear();
                                     ClipboardTransaction.ClearUnrestoredWrite();
-                                    SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=True, empty baseline cleared");
+                                    Log.Info("Clipboard restore finished: ok=True, empty baseline cleared");
                                     return;
                                 }
+
                                 if (now.Sequence != 0 && now.OwnerWindow != IntPtr.Zero)
                                 {
                                     // 已被第三方内容取代：我们的写入不复存在，也没有可清的东西。
                                     ClipboardTransaction.ClearUnrestoredWrite();
-                                    SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=True (write already replaced)");
+                                    Log.Info("Clipboard restore finished: ok=True (write already replaced)");
                                     return;
                                 }
                             }
-                            catch { /* 清空失败不致命，任务已读回文本；下一轮重试或记台账 */ }
+                            catch
+                            {
+                                /* 清空失败不致命，任务已读回文本；下一轮重试或记台账 */
+                            }
                         }
+
                         ClipboardTransaction.NoteUnrestoredWrite(ClipboardTransaction.ObserveClipboard());
-                        SnapActions.Helpers.Log.Info("Clipboard restore finished: ok=False (empty baseline not cleared), residue noted");
+                        Log.Info("Clipboard restore finished: ok=False (empty baseline not cleared), residue noted");
                     });
                 }
             }
@@ -1118,21 +1224,22 @@ internal static class UiaSelectionProvider
     }
 
     private static async Task<(string? Text, ClipboardTransaction.ClipboardObservation? AcceptedWrite)> TryOneSyntheticCopyAsync(
-        SelectionOperation operation, ClipboardTransaction.ClipboardObservation before)
+            SelectionOperation operation, ClipboardTransaction.ClipboardObservation before)
     {
         var outcome = await InputExecutor.TrySimulateCopyAsync(operation, before);
         // Partial：按键序列只送出了一部分（例如 Ctrl 的抬起失败），复制可能已经发生，仍按"可能
         // 已投递"观察并清理；Rejected（一个按键都没送出）时剪贴板不可能因本次注入变化，直接返回。
-        bool delivered = outcome.Status != InputExecutor.InputInjectionStatus.Rejected;
+        var delivered = outcome.Status != InputExecutor.InputInjectionStatus.Rejected;
         string? text = null;
         ClipboardTransaction.ClipboardObservation? acceptedWrite = null;
         if (!delivered)
         {
-            SnapActions.Helpers.Log.Info(
+            Log.Info(
                 "Synthetic copy (Ctrl+Insert): status=Rejected, nothing delivered");
             return (null, null);
         }
-        for (int i = 0; i < 30; i++)
+
+        for (var i = 0; i < 30; i++)
         {
             await Task.Delay(10);
             var after = ClipboardTransaction.ObserveClipboard();
@@ -1141,6 +1248,7 @@ internal static class UiaSelectionProvider
                 if (i < 29) continue;
                 break; // 目标未写剪贴板（无选区或拒绝）
             }
+
             if (ClipboardTransaction.IsClipboardOwnedByProcess(after, operation.Target.ProcessId))
             {
                 text = await ClipboardTransaction.ReadCurrentClipboardTextAsync();
@@ -1151,28 +1259,85 @@ internal static class UiaSelectionProvider
                 // 只要"读不到文本"，就放弃清理 —— 否则会把截图工具/画图/游戏写进剪贴板的内容
                 if (!string.IsNullOrEmpty(text)
                     && ClipboardTransaction.IsClipboardOwnedByProcess(afterRead, operation.Target.ProcessId))
-                {
                     acceptedWrite = afterRead;
-                }
                 else
-                {
-                    text = null;               // 剪贴板里不是文本：不是 Ctrl+Insert 的产物，绝不清理
-                }
+                    text = null; // 剪贴板里不是文本：不是 Ctrl+Insert 的产物，绝不清理
                 break;
             }
+
             // 序列号已变，但这次观察不可用（属主为空/两次采样不一致）：目标进程发布剪贴板时会
             // 先 EmptyClipboard 再写入，属主短暂为空；多格式发布过程中采样也常不稳定。这些都是瞬态，
             // 就此放弃会同时丢掉读取与清理，稍后完成的写入就留在用户剪贴板上。继续观察：稍后稳定
             // 由目标进程持有即入账并清理；始终不可用则耗尽后放弃，第三方内容不受影响。
             if (i < 29) continue;
-            SnapActions.Helpers.Log.Info(
+            Log.Info(
                 "Synthetic copy gave up observing: clipboard changed but never seen owned by target " +
                 $"(seq={after.Sequence}, ownerPid={after.OwnerProcessId}, targetPid={operation.Target.ProcessId})");
         }
-        SnapActions.Helpers.Log.Info(
+
+        Log.Info(
             $"Synthetic copy (Ctrl+Insert): status={outcome.Status}, " +
             $"text={(text == null ? "null" : text.Length + " chars")}, restorable={acceptedWrite != null}");
         return (text, acceptedWrite);
     }
 
+    internal readonly record struct CaptureResult(
+        string? Text,
+        SelectionOperation Operation);
+
+    internal readonly record struct SelectionGesture(
+        bool IsDrag,
+        int ClickCount,
+        int StartX,
+        int StartY,
+        int EndX,
+        int EndY);
+
+    internal readonly record struct Utf16Span(int Start, int Length)
+    {
+        internal int End => Start + Length;
+    }
+
+    internal enum SelectionProbeOutcome
+    {
+        /// <summary>UIA returned selected text that passed identity and geometry checks.</summary>
+        HasText,
+
+        /// <summary>
+        ///     UIA confirmed a selection, but its returned text is not trusted.
+        ///     A later explicit user copy can still provide text.
+        /// </summary>
+        ConfirmedTextPreferExact,
+
+        /// <summary>
+        ///     UIA returned text, but an exact clipboard-free gesture reconstruction was
+        ///     unavailable or a double-click word did not match its selection length.
+        /// </summary>
+        UntrustedText,
+
+        /// <summary>
+        ///     The focused element is a non-text item (Explorer file, desktop icon, list row).
+        ///     Definitive — capture must not run (WM_COPY would copy the item's name).
+        /// </summary>
+        SuppressItemElement,
+
+        /// <summary>
+        ///     A TextPattern was found but reported an empty selection. Usually means "no
+        ///     selection", but some providers lie (report empty despite a real selection), so this is
+        ///     a signal to try the remaining read-only UIA path.
+        /// </summary>
+        EmptyTextPattern,
+
+        /// <summary>UIA could not establish a text selection.</summary>
+        Unknown
+    }
+
+    internal readonly record struct SelectionProbe(
+        SelectionProbeOutcome Outcome,
+        string? Text,
+        string? Reason,
+        string? AutomationRuntimeId = null,
+        Func<bool>? ValidateInput = null);
+
+    private readonly record struct LogicalLineSelection(int LineStart, int LineLength, int Start, int End);
 }
