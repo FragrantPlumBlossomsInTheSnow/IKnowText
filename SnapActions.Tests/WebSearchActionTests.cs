@@ -11,7 +11,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_SubstitutesQueryAndEscapes()
     {
-        var action = new WebSearchAction("g", "Google", "icon",
+        var action = new WebSearchAction("g", "Google", 
             "https://www.google.com/search?q={0}");
         Assert.Equal("https://www.google.com/search?q=hello%20world", action.BuildUrl("hello world"));
     }
@@ -19,7 +19,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_TrimsQueryWhitespace()
     {
-        var action = new WebSearchAction("g", "Google", "icon",
+        var action = new WebSearchAction("g", "Google", 
             "https://www.google.com/search?q={0}");
         Assert.Equal("https://www.google.com/search?q=hello", action.BuildUrl("  hello  "));
     }
@@ -123,7 +123,7 @@ public class WebSearchActionTests
     [Fact]
     public void BuildUrl_QueryWithSpecialChars_GetsEscaped()
     {
-        var action = new WebSearchAction("g", "Google", "icon",
+        var action = new WebSearchAction("g", "Google", 
             "https://www.google.com/search?q={0}");
         // & and = inside the query must be %-encoded so they don't break the URL structure
         Assert.Equal("https://www.google.com/search?q=a%26b%3Dc", action.BuildUrl("a&b=c"));
