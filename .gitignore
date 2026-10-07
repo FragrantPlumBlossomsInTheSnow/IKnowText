@@ -6,7 +6,7 @@
 *.suo
 *.userosscache
 *.sln.docstates
-# 测试/构建产物
+# Test / Build Product
 _selftest/
 TestResults/
 artifacts/

@@ -3,6 +3,9 @@
 一个 Windows 划词工具栏：选中文本即出现，可复制、翻译、文本转换、编码/解码、网页搜索。
 基于 [SnapActions](https://github.com/roko-tech/SnapActions) v2.4.5 的**独立中文改造版** —— 界面与外观中文化、翻译改用百度翻译 API（**不依赖 WebView2**）、新增自定义 JS 脚本动作与自定义翻译引擎；上游的浏览器扩展伴侣已移除，选区改由 Windows UI Automation 读取。
 
+> ⚠️ **开发中**：本项目仍在在开发中，可能有 bug 或未完成的功能。
+> 目前不提供预编译版本，请自行从源码构建。
+
 A Windows selection toolbar that appears when you select text — an independent, Chinese-localised build of SnapActions v2.4.5 (Baidu Translate instead of Google + WebView2, plus user-defined JavaScript actions).
 
 仓库 <https://github.com/XuejiMeixiangli/IKnowText> · 详细文档：[用户指南](docs/user-guide.md)
