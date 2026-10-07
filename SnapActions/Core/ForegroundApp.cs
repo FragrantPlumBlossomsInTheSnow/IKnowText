@@ -9,39 +9,88 @@ public static class ForegroundApp
 {
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+    // Maximum UIA parent levels to walk when probing for text capability. Leaf nodes in a
+    // browser DOM (`<span>`, `<a>`, `<i>`, `<svg>`) routinely don't expose TextPattern on
+    // themselves even though their paragraph / article / document ancestor does. 4 levels is
+    // enough to reach `<p>` from a nested inline element (`<a><span>text</span></a>` style).
+    private const int TextPatternParentWalkDepth = 4;
+
     /// <summary>
     ///     本进程的可执行文件名（不含扩展名）。用来把「自己」从应用列表/排除判断里剔掉：
     ///     不再硬编码应用名，改 exe 名后这些自识别逻辑不会失效。
     /// </summary>
-    public static readonly string OwnProcessName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "IKnowText");
+    public static readonly string OwnProcessName =
+        Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "IKnowText");
+
+    /// <summary>
+    ///     Process names where the double-click paste-mode trigger should be suppressed regardless
+    ///     of focused element. Explorer's native double-click action is "open the folder under the
+    ///     cursor" — and after that action, focus can briefly land on the address bar
+    ///     (ControlType.Edit) even though the user clearly meant to navigate, not type. Long-press
+    ///     paste mode still works in these apps (it uses the cursor-at-point check, which correctly
+    ///     rejects folder icons / file rows). Match is by process name (no .exe suffix).
+    /// </summary>
+    private static readonly HashSet<string> NoDoubleClickPasteModeProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer", "TOTALCMD", "TOTALCMD64", "doublecmd", "dopus", "Files"
+    };
+
+    /// <summary>
+    ///     系统输入类宿主：剪贴板历史面板、IME 候选窗口、表情面板等。
+    ///     这些进程常驻或按需启动，进程名匹配不绝对等于"面板正在打开"，
+    /// </summary>
+    private static readonly HashSet<string> InputHostProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "WindowsInternal.ComposableShell.Experiences.TextInput.InputApp",
+        "TextInputHost"
+    };
+    
+    /// <summary>
+    ///     Item-like control types that definitively are NOT text inputs. Used as an early-reject in
+    ///     the strict editable check so a folder-row / list-row focus after a double-click action
+    ///     can't pass via some side pattern.
+    /// </summary>
+    private static readonly ControlType[] NonTextFocusableTypes =
+    [
+        ControlType.ListItem, ControlType.DataItem, ControlType.TreeItem,
+        ControlType.Button, ControlType.MenuItem, ControlType.TabItem,
+        ControlType.Image, ControlType.Hyperlink, ControlType.ScrollBar,
+        ControlType.CheckBox, ControlType.RadioButton
+    ];
+
 
     /// <summary>当前进程名是否等于本进程（大小写不敏感）。</summary>
-    public static bool IsOwnProcess(string? processName) =>
-        processName != null && processName.Equals(OwnProcessName, StringComparison.OrdinalIgnoreCase);
+    public static bool IsOwnProcess(string? processName)
+    {
+        return processName != null && processName.Equals(OwnProcessName, StringComparison.OrdinalIgnoreCase);
+    }
 
     public static string? GetActiveProcessName()
     {
         // Avoid Process.GetProcessById here — it allocates a Process object and reads the full
         // module path through a slower path. We do this on every selection; faster matters.
-        IntPtr handle = IntPtr.Zero;
+        var handle = IntPtr.Zero;
         try
         {
-            IntPtr hwnd = GetForegroundWindow();
+            var hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return null;
-            GetWindowThreadProcessId(hwnd, out uint pid);
+            GetWindowThreadProcessId(hwnd, out var pid);
             if (pid == 0) return null;
 
             handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
             if (handle == IntPtr.Zero) return null;
 
             var buffer = new StringBuilder(1024);
-            int size = buffer.Capacity;
+            var size = buffer.Capacity;
             if (!QueryFullProcessImageName(handle, 0, buffer, ref size))
                 return null;
 
             return Path.GetFileNameWithoutExtension(buffer.ToString(0, size));
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
         finally
         {
             if (handle != IntPtr.Zero) CloseHandle(handle);
@@ -49,11 +98,13 @@ public static class ForegroundApp
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+        uint dwProcessId);
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool QueryFullProcessImageName(IntPtr hProcess, int dwFlags, StringBuilder lpExeName, ref int lpdwSize);
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, int dwFlags, StringBuilder lpExeName,
+        ref int lpdwSize);
 
     [DllImport("kernel32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -65,13 +116,14 @@ public static class ForegroundApp
         if (name == null) return false;
         if (IsOwnProcess(name)) return true;
         foreach (var ex in exclusionList)
-            if (name.Equals(ex, StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.Equals(ex, StringComparison.OrdinalIgnoreCase))
+                return true;
         return false;
     }
 
     /// <summary>
-    /// Requires affirmative editable capability. A caret, Edit control type, or TextPattern
-    /// alone proves neither that selected text is writable nor that replacement is safe.
+    ///     Requires affirmative editable capability. A caret, Edit control type, or TextPattern
+    ///     alone proves neither that selected text is writable nor that replacement is safe.
     /// </summary>
     public static bool IsEditableFieldFocused()
     {
@@ -80,12 +132,17 @@ public static class ForegroundApp
             var focused = AutomationElement.FocusedElement;
             return focused != null && ReadEditability(focused) == true;
         }
-        catch { }
+        catch
+        {
+        }
+
         return false;
     }
 
-    internal static bool IsEditableEvidence(bool enabled, bool? valueReadOnly, bool? textReadOnly) =>
-        enabled && !(valueReadOnly ?? textReadOnly ?? true);
+    internal static bool IsEditableEvidence(bool enabled, bool? valueReadOnly, bool? textReadOnly)
+    {
+        return enabled && !(valueReadOnly ?? textReadOnly ?? true);
+    }
 
     private static bool? ReadEditability(AutomationElement element)
     {
@@ -98,28 +155,16 @@ public static class ForegroundApp
             var readOnly = ((TextPattern)text).DocumentRange.GetAttributeValue(TextPattern.IsReadOnlyAttribute);
             return IsEditableEvidence(true, null, readOnly is bool flag ? flag : null);
         }
+
         return null; // A leaf without text patterns may belong to an editable ancestor.
     }
 
     /// <summary>
-    /// Process names where the double-click paste-mode trigger should be suppressed regardless
-    /// of focused element. Explorer's native double-click action is "open the folder under the
-    /// cursor" — and after that action, focus can briefly land on the address bar
-    /// (ControlType.Edit) even though the user clearly meant to navigate, not type. Long-press
-    /// paste mode still works in these apps (it uses the cursor-at-point check, which correctly
-    /// rejects folder icons / file rows). Match is by process name (no .exe suffix).
-    /// </summary>
-    private static readonly HashSet<string> NoDoubleClickPasteModeProcesses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "explorer", "TOTALCMD", "TOTALCMD64", "doublecmd", "dopus", "Files",
-    };
-
-    /// <summary>
-    /// True when the foreground app is Explorer / the desktop / a known file manager — a shell
-    /// item container where a synthetic Ctrl+Insert would copy FILES (CF_HDROP), not text, and
-    /// could silently downgrade a pending Ctrl+X cut to a copy on the clipboard restore. Used to
-    /// withhold the ambiguous-cursor drag keystroke there; automatic selection capture never targets
-    /// these apps. (Same process set as the double-click paste-mode reject.)
+    ///     True when the foreground app is Explorer / the desktop / a known file manager — a shell
+    ///     item container where a synthetic Ctrl+Insert would copy FILES (CF_HDROP), not text, and
+    ///     could silently downgrade a pending Ctrl+X cut to a copy on the clipboard restore. Used to
+    ///     withhold the ambiguous-cursor drag keystroke there; automatic selection capture never targets
+    ///     these apps. (Same process set as the double-click paste-mode reject.)
     /// </summary>
     public static bool IsFileManagerFocused()
     {
@@ -128,21 +173,8 @@ public static class ForegroundApp
     }
 
     /// <summary>
-    /// Item-like control types that definitively are NOT text inputs. Used as an early-reject in
-    /// the strict editable check so a folder-row / list-row focus after a double-click action
-    /// can't pass via some side pattern.
-    /// </summary>
-    private static readonly System.Windows.Automation.ControlType[] NonTextFocusableTypes =
-    [
-        ControlType.ListItem, ControlType.DataItem, ControlType.TreeItem,
-        ControlType.Button, ControlType.MenuItem, ControlType.TabItem,
-        ControlType.Image, ControlType.Hyperlink, ControlType.ScrollBar,
-        ControlType.CheckBox, ControlType.RadioButton,
-    ];
-
-    /// <summary>
-    /// Uses the shared read-only capability check and excludes file-manager double-clicks,
-    /// which can move focus to an address bar as a side effect of opening an item.
+    ///     Uses the shared read-only capability check and excludes file-manager double-clicks,
+    ///     which can move focus to an address bar as a side effect of opening an item.
     /// </summary>
     public static bool IsStrictlyEditableFocused()
     {
@@ -154,45 +186,49 @@ public static class ForegroundApp
         return IsEditableFieldFocused();
     }
 
-    // Maximum UIA parent levels to walk when probing for text capability. Leaf nodes in a
-    // browser DOM (`<span>`, `<a>`, `<i>`, `<svg>`) routinely don't expose TextPattern on
-    // themselves even though their paragraph / article / document ancestor does. 4 levels is
-    // enough to reach `<p>` from a nested inline element (`<a><span>text</span></a>` style).
-    private const int TextPatternParentWalkDepth = 4;
-
     /// <summary>
-    /// True when the UI Automation element under (<paramref name="x"/>, <paramref name="y"/>)
-    /// — or any of its first <see cref="TextPatternParentWalkDepth"/> ancestors — is an
-    /// *editable* text input. False for title bars, scrollbars, tabs, panes, draggable file
-    /// icons, AND for read-only text content like Twitter feed articles or Wikipedia paragraphs.
+    ///     True when the UI Automation element under (<paramref name="x" />, <paramref name="y" />)
+    ///     — or any of its first <see cref="TextPatternParentWalkDepth" /> ancestors — is an
+    ///     *editable* text input. False for title bars, scrollbars, tabs, panes, draggable file
+    ///     icons, AND for read-only text content like Twitter feed articles or Wikipedia paragraphs.
     /// </summary>
     /// <remarks>
-    /// The parent walk handles the case where `FromPoint` returns a leaf inline element (a
-    /// `&lt;span&gt;` inside a contenteditable, etc.) and we need to climb up to the actual editor.
-    /// Slow (50–500 ms on Electron with a11y not loaded); call from a worker thread, never the
-    /// hook thread or the dispatcher synchronously.
-    /// An explicit read-only/disabled verdict stops the walk. Only leaves without capability
-    /// evidence may defer to an ancestor; control type and focusability never override read-only.
+    ///     The parent walk handles the case where `FromPoint` returns a leaf inline element (a
+    ///     `&lt;span&gt;` inside a contenteditable, etc.) and we need to climb up to the actual editor.
+    ///     Slow (50–500 ms on Electron with a11y not loaded); call from a worker thread, never the
+    ///     hook thread or the dispatcher synchronously.
+    ///     An explicit read-only/disabled verdict stops the walk. Only leaves without capability
+    ///     evidence may defer to an ancestor; control type and focusability never override read-only.
     /// </remarks>
     public static bool IsTextInputAtPoint(int x, int y)
     {
         try
         {
-            var element = AutomationElement.FromPoint(new System.Windows.Point(x, y));
+            var element = AutomationElement.FromPoint(new Point(x, y));
             if (element == null) return false;
 
             var walker = TreeWalker.RawViewWalker;
-            for (int depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
+            for (var depth = 0; element != null && depth < TextPatternParentWalkDepth; depth++)
             {
                 try
                 {
                     if (ReadEditability(element) is { } editable) return editable;
                 }
-                catch { return false; }
+                catch
+                {
+                    return false;
+                }
 
-                try { element = walker.GetParent(element); }
-                catch { break; }
+                try
+                {
+                    element = walker.GetParent(element);
+                }
+                catch
+                {
+                    break;
+                }
             }
+
             return false;
         }
         catch
@@ -204,11 +240,41 @@ public static class ForegroundApp
             return false;
         }
     }
+    /// <summary>
+    ///     给定屏幕坐标下，光标是否覆盖在系统输入类宿主（剪贴板面板 / IME 面板）上。这里只在光标真的在面板上时才命中。
+    /// </summary>
+    public static bool IsInputHostAtPoint(int x, int y)
+    {
+        var hwnd = WindowFromPoint(new MouseHook.POINT { X = x, Y = y });
+        if (hwnd == IntPtr.Zero) return false;
+        GetWindowThreadProcessId(hwnd, out var pid);
+        if (pid == 0) return false;
 
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) return false;
+        try
+        {
+            var buffer = new StringBuilder(1024);
+            var size = buffer.Capacity;
+            if (!QueryFullProcessImageName(handle, 0, buffer, ref size)) return false;
+            var name = Path.GetFileNameWithoutExtension(buffer.ToString(0, size));
+            return InputHostProcesses.Contains(name);
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            CloseHandle(handle);
+        }
+    }
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(MouseHook.POINT pt);
 }

@@ -87,6 +87,7 @@ public class SelectionTracker
     /// </summary>
     private void OnCtrlCPressed()
     {
+        if (ForegroundApp.IsInputHostAtPoint(_mouseDownPoint.X, _mouseDownPoint.Y)) return;
         if (IsSelfFocused()) return;
         if (!SettingsManager.Current.CaptureOnCtrlC)
         {
@@ -266,6 +267,7 @@ public class SelectionTracker
     {
         if (IsSelfFocused()) return;
         if (MouseHook.IsProcessWindowAtPoint(cursorPos, OwnPid)) return;
+        if (ForegroundApp.IsInputHostAtPoint(cursorPos.X, cursorPos.Y)) return;
         if (!ShouldCaptureMouseSelection(SettingsManager.Current)) return;
 
         // Cursor gate. The OS shows the text (I-beam) cursor only when the pointer is over
@@ -410,6 +412,7 @@ public class SelectionTracker
 
     private void OnLongPress(MouseHook.POINT cursorPos)
     {
+        if (ForegroundApp.IsInputHostAtPoint(cursorPos.X, cursorPos.Y)) return;
         if (IsSelfFocused()) return;
         if (MouseHook.IsProcessWindowAtPoint(cursorPos, OwnPid)) return;
         var operation = _operations.Begin(default);

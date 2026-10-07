@@ -1,12 +1,31 @@
+using System.Globalization;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using SnapActions.Actions.ContextActions;
+using SnapActions.Actions.SearchActions;
 using SnapActions.Actions.TransformActions;
+using SnapActions.Actions.UserActions;
+using SnapActions.Config;
 using SnapActions.Detection;
 
 namespace SnapActions.Actions;
 
 public partial class ActionRegistry
 {
+    /// <summary>
+    ///     The fixed (non-search) action IDs — invariant across the process lifetime, so we
+    ///     instantiate the registry once instead of rebuilding it on every call.
+    /// </summary>
+    private static readonly Lazy<IReadOnlySet<string>> _fixedActionIds = new(() =>
+    {
+        var registry = new ActionRegistry();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var a in registry._allActions) ids.Add(a.Id);
+        return ids;
+    });
+
     private readonly List<IAction> _allActions;
 
     public ActionRegistry()
@@ -45,11 +64,11 @@ public partial class ActionRegistry
             new CaseTransformAction("snake", "下_划_线", "", ToSnakeCase),
             new CaseTransformAction("kebab", "短-横-线", "", ToKebabCase),
             new CaseTransformAction("reverse", "反转", "", ReverseGraphemes),
-            
+
             new WhitespaceAction("trim", "去除首尾空格", text => text.Trim()),
             new WhitespaceAction("remove_extra_spaces", "去除多余空格", text => MyRegex1().Replace(text, " ")),
-            new WhitespaceAction("sort_lines", "排序行", text => SortLines(text, distinct: false)),
-            new WhitespaceAction("dedup_lines", "去除重复项", text => SortLines(text, distinct: true)),
+            new WhitespaceAction("sort_lines", "排序行", text => SortLines(text, false)),
+            new WhitespaceAction("dedup_lines", "去除重复项", text => SortLines(text, true)),
             new WhitespaceAction("remove_linebreaks", "去除换行符", text => MyRegex().Replace(text, " ").Trim()),
 
             // 包围操作
@@ -60,121 +79,112 @@ public partial class ActionRegistry
             new WrapAction("wrap_brackets", "[ ]", "[", "]"),
             new WrapAction("wrap_braces", "{ }", "{", "}"),
             new WrapAction("wrap_chinese_quotes", "「」", "「", "」"),
-            
+
             // 编码操作
             new EncodingAction("url_encode", "URL编码", "", Uri.EscapeDataString),
             new EncodingAction("url_decode", "URL解码", "", Uri.UnescapeDataString),
             new EncodingAction("base64_encode", "Base64编码", "",
-                text => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text))),
+                text => Convert.ToBase64String(Encoding.UTF8.GetBytes(text))),
             new EncodingAction("base64_decode", "Base64解码", "",
-                text => new System.Text.UTF8Encoding(false, true).GetString(Convert.FromBase64String(text))),
+                text => new UTF8Encoding(false, true).GetString(Convert.FromBase64String(text))),
             new EncodingAction("html_encode", "HTML编码", "",
-                text => System.Net.WebUtility.HtmlEncode(text)),
+                text => WebUtility.HtmlEncode(text)),
             new EncodingAction("html_decode", "HTML解码", "",
-                text => System.Net.WebUtility.HtmlDecode(text)),
-            
+                text => WebUtility.HtmlDecode(text)),
+
             // Hex / ROT13
             new EncodingAction("hex_encode", "Hex编码", "",
-                text => Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(text)).ToLowerInvariant()),
+                text => Convert.ToHexString(Encoding.UTF8.GetBytes(text)).ToLowerInvariant()),
             new EncodingAction("hex_decode", "Hex解码", "",
-                text => new System.Text.UTF8Encoding(false, true).GetString(Convert.FromHexString(text.Trim()))),
+                text => new UTF8Encoding(false, true).GetString(Convert.FromHexString(text.Trim()))),
             new EncodingAction("rot13", "ROT13", "", Rot13),
 
             // 哈希操作
-            new EncodingAction("md5", "MD5", "", text => Hash(System.Security.Cryptography.MD5.HashData, text)),
-            new EncodingAction("sha1", "SHA-1", "", text => Hash(System.Security.Cryptography.SHA1.HashData, text)),
-            new EncodingAction("sha256", "SHA-256", "", text => Hash(System.Security.Cryptography.SHA256.HashData, text)),
-            new EncodingAction("sha512", "SHA-512", "", text => Hash(System.Security.Cryptography.SHA512.HashData, text)),
-
+            new EncodingAction("md5", "MD5", "", text => Hash(MD5.HashData, text)),
+            new EncodingAction("sha1", "SHA-1", "", text => Hash(SHA1.HashData, text)),
+            new EncodingAction("sha256", "SHA-256", "", text => Hash(SHA256.HashData, text)),
+            new EncodingAction("sha512", "SHA-512", "", text => Hash(SHA512.HashData, text))
         ];
     }
 
     private static string Rot13(string text)
     {
-        var sb = new System.Text.StringBuilder(text.Length);
+        var sb = new StringBuilder(text.Length);
         foreach (var c in text)
-        {
             if (c is >= 'a' and <= 'z') sb.Append((char)('a' + (c - 'a' + 13) % 26));
             else if (c is >= 'A' and <= 'Z') sb.Append((char)('A' + (c - 'A' + 13) % 26));
             else sb.Append(c);
-        }
         return sb.ToString();
     }
 
     /// <summary>
-    /// The fixed (non-search) action IDs — invariant across the process lifetime, so we
-    /// instantiate the registry once instead of rebuilding it on every call.
+    ///     All action IDs known to the registry, including the generated `search_
+    ///     <engine.Id>
+    ///         ` ones.
+    ///         Used by SettingsManager.PruneStaleActionIds to drop orphan entries on Load.
     /// </summary>
-    private static readonly Lazy<IReadOnlySet<string>> _fixedActionIds = new(() =>
-    {
-        var registry = new ActionRegistry();
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var a in registry._allActions) ids.Add(a.Id);
-        return ids;
-    });
-
-    /// <summary>
-    /// All action IDs known to the registry, including the generated `search_<engine.Id>` ones.
-    /// Used by SettingsManager.PruneStaleActionIds to drop orphan entries on Load.
-    /// </summary>
-    public static IReadOnlySet<string> GetAllKnownActionIds(IEnumerable<Config.SearchEngine> engines, IEnumerable<Config.UserAction>? userActions = null,
-        IEnumerable<Config.TextRecipeDefinition>? recipes = null)
+    public static IReadOnlySet<string> GetAllKnownActionIds(IEnumerable<SearchEngine> engines,
+        IEnumerable<UserAction>? userActions = null,
+        IEnumerable<TextRecipeDefinition>? recipes = null)
     {
         // Reuse the cached fixed-ID set and just merge in the per-call search engine IDs. Previously
         // every call constructed a fresh ActionRegistry — fine for the single Load-time caller but
         // wasteful if anything else starts to use this API.
         var ids = new HashSet<string>(_fixedActionIds.Value, StringComparer.Ordinal);
         foreach (var e in engines) ids.Add($"search_{e.Id}");
-        foreach (var u in userActions ?? Config.SettingsManager.Current.UserActions) ids.Add($"user_{u.Id}");
-        foreach (var recipe in recipes ?? Config.SettingsManager.Current.TextRecipes) ids.Add($"recipe_{recipe.Id}");
+        foreach (var u in userActions ?? SettingsManager.Current.UserActions) ids.Add($"user_{u.Id}");
+        foreach (var recipe in recipes ?? SettingsManager.Current.TextRecipes) ids.Add($"recipe_{recipe.Id}");
         return ids;
     }
 
     public List<ActionGroup> GetActions(string text, TextAnalysis analysis, string? appName = null)
     {
-        var s = Config.SettingsManager.Current;
+        var s = SettingsManager.Current;
         var groups = new List<ActionGroup>();
         // Global disabled set, unioned with any per-app hidden actions for the foreground app.
         var disabled = new HashSet<string>(s.DisabledActionIds, StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(appName))
             foreach (var (app, ids) in s.AppHiddenActions)
                 if (app.Equals(appName, StringComparison.OrdinalIgnoreCase))
-                    foreach (var id in ids) disabled.Add(id);
+                    foreach (var id in ids)
+                        disabled.Add(id);
         var applicable = _allActions
             .Where(a => a.CanExecute(text, analysis) && !disabled.Contains(a.Id))
             .ToList();
         foreach (var recipe in s.TextRecipes.Where(r => r.Enabled))
         {
-            var action = new UserActions.TextRecipeAction(recipe, PureTextOperations());
+            var action = new TextRecipeAction(recipe, PureTextOperations());
             if (!disabled.Contains(action.Id) && action.CanExecute(text, analysis)) applicable.Add(action);
         }
 
         // 翻译动作是 Context 类别但独立成组（工具栏翻译按钮的显示开关）；从上下文组剔除，
         // 避免 translate 同时在 Context/Translate 两组出现导致重复渲染。
-        var contextActions = applicable.Where(a => a.Category == ActionCategory.Context && a.Id != "translate").ToList();
+        var contextActions =
+            applicable.Where(a => a.Category == ActionCategory.Context && a.Id != "translate").ToList();
 
         // 自定义操作：脚本动作（Code 内嵌或 ScriptFile 独立文件）按 JS 脚本（Transform），否则按 URL 模板（Context）。
         if (s.EnableCustomActions)
-        {
             foreach (var ua in s.UserActions.Where(u => u.Enabled))
             {
                 IAction action = IsScriptAction(ua)
-                    ? new UserActions.UserScriptAction(ua)
-                    : new UserActions.UserRecipeAction(ua);
+                    ? new UserScriptAction(ua)
+                    : new UserRecipeAction(ua);
                 if (action.CanExecute(text, analysis) && !disabled.Contains(action.Id))
                 {
-                    if (action.Category == ActionCategory.Context) contextActions.Add(action);
+                    if (action.Category == ActionCategory.Context)
+                    {
+                        contextActions.Add(action);
+                    }
                     else
                     {
                         applicable.Add(action);
                         // 配了「上下文触发」正则的 JS 脚本动作：命中选区时同时作为上下文动作内联显示
                         //（ContextSeparator 后那一排），但仍留在 Transform 组里，转换子菜单照旧可用。
-                        if (action is UserActions.UserScriptAction script && script.IsContextTriggered(text))
+                        if (action is UserScriptAction script && script.IsContextTriggered(text))
                             contextActions.Add(action);
                     }
                 }
             }
-        }
 
         if (contextActions.Count > 0)
             groups.Add(new ActionGroup("Context", "", contextActions));
@@ -183,6 +193,7 @@ public partial class ActionRegistry
             var list = applicable.Where(a => a.Category == ActionCategory.Paste).ToList();
             if (list.Count > 0) groups.Add(new ActionGroup("Paste", "", list));
         }
+
         if (s.ShowTranslateActions)
         {
             // 仅翻译动作进入 Translate 组；不可用 Transform 类别过滤，否则会把所有文本转换
@@ -196,6 +207,7 @@ public partial class ActionRegistry
             var list = applicable.Where(a => a.Category == ActionCategory.Transform).ToList();
             if (list.Count > 0) groups.Add(new ActionGroup("Transform", "", list));
         }
+
         if (s.ShowEncodeActions)
         {
             var list = applicable.Where(a => a.Category == ActionCategory.Encode).ToList();
@@ -204,12 +216,10 @@ public partial class ActionRegistry
 
         if (s.ShowSearchActions && !string.IsNullOrEmpty(text.Trim()))
         {
-            var lang = s.SearchLanguage ?? "";
             var searchActions = s.SearchEngines
                 .Where(e => e.Enabled && !disabled.Contains($"search_{e.Id}"))
-                .Select(e => (IAction)new SearchActions.WebSearchAction(
-                    e.Id, e.Name, "", e.UrlTemplate,
-                    e.UseLanguageFilter ? lang : "", e.LangMode))
+                .Select(e => (IAction)new WebSearchAction(
+                    e.Id, e.Name, "", e.UrlTemplate, langMode: e.LangMode))
                 .ToList();
             if (searchActions.Count > 0)
                 groups.Add(new ActionGroup("Search", "", searchActions));
@@ -218,65 +228,76 @@ public partial class ActionRegistry
         return groups;
     }
 
-    /// <summary>图钉在选择和类别菜单偏好中保持顺序。
-    /// 不适用的引脚仍然可见；工具栏解释了它们无法运行的原因。</summary>
+    /// <summary>
+    ///     图钉在选择和类别菜单偏好中保持顺序。
+    ///     不适用的引脚仍然可见；工具栏解释了它们无法运行的原因。
+    /// </summary>
     internal List<IAction> GetPinnedActions(string? appName = null)
     {
-        var settings = Config.SettingsManager.Current;
+        var settings = SettingsManager.Current;
         var actions = Enum.GetValues<ActionCategory>().SelectMany(GetAllActionsForCategory).ToDictionary(a => a.Id);
         var appHidden = settings.AppHiddenActions
             .Where(p => p.Key.Equals(appName, StringComparison.OrdinalIgnoreCase))
             .SelectMany(p => p.Value).ToHashSet(StringComparer.Ordinal);
         return settings.PinnedActionIds.Distinct(StringComparer.Ordinal)
             .Where(actions.ContainsKey).Select(id => actions[id])
-            .Where(a => !Config.ToolbarPreferences.IsHidden(settings, a) && !appHidden.Contains(a.Id)).ToList();
+            .Where(a => !ToolbarPreferences.IsHidden(settings, a) && !appHidden.Contains(a.Id)).ToList();
     }
 
-    /// <summary>All fixed (non-search) actions as (id, name, category) — for the per-app profile
-    /// editor in Settings, which lets the user choose actions to hide by name.</summary>
-    public IEnumerable<(string Id, string Name, ActionCategory Category)> AllActionDescriptors() =>
-        Enum.GetValues<ActionCategory>().SelectMany(GetAllActionsForCategory).Select(a => (a.Id, a.Name, a.Category));
+    /// <summary>
+    ///     All fixed (non-search) actions as (id, name, category) — for the per-app profile
+    ///     editor in Settings, which lets the user choose actions to hide by name.
+    /// </summary>
+    public IEnumerable<(string Id, string Name, ActionCategory Category)> AllActionDescriptors()
+    {
+        return Enum.GetValues<ActionCategory>().SelectMany(GetAllActionsForCategory)
+            .Select(a => (a.Id, a.Name, a.Category));
+    }
 
-    public IReadOnlyDictionary<string, IAction> PureTextOperations() => _allActions
-        .Where(a => a.IsPreviewSafe && a.Category is ActionCategory.Transform or ActionCategory.Encode)
-        .ToDictionary(a => a.Id);
+    public IReadOnlyDictionary<string, IAction> PureTextOperations()
+    {
+        return _allActions
+            .Where(a => a.IsPreviewSafe && a.Category is ActionCategory.Transform or ActionCategory.Encode)
+            .ToDictionary(a => a.Id);
+    }
 
     /// <summary>Get all actions for a category (including disabled ones) for the edit mode UI.</summary>
     public List<IAction> GetAllActionsForCategory(ActionCategory category)
     {
         if (category == ActionCategory.Search)
-        {
             // Search actions are built from settings, not from _allActions
-            var lang = Config.SettingsManager.Current.SearchLanguage ?? "";
-            return Config.SettingsManager.Current.SearchEngines
-                .Select(e => (IAction)new SearchActions.WebSearchAction(
-                    e.Id, e.Name, "", e.UrlTemplate,
-                    e.UseLanguageFilter ? lang : "", e.LangMode))
+            return SettingsManager.Current.SearchEngines
+                .Select(e => (IAction)new WebSearchAction(
+                    e.Id, e.Name, "", e.UrlTemplate, langMode: e.LangMode))
                 .ToList();
-        }
         var actions = _allActions.Where(a => a.Category == category).ToList();
-        var userActions = Config.SettingsManager.Current.EnableCustomActions
-            ? Config.SettingsManager.Current.UserActions
+        var userActions = SettingsManager.Current.EnableCustomActions
+            ? SettingsManager.Current.UserActions
             : [];
         if (category == ActionCategory.Transform)
-            actions.AddRange(Config.SettingsManager.Current.TextRecipes.Select(r => new UserActions.TextRecipeAction(r, PureTextOperations())));
+            actions.AddRange(
+                SettingsManager.Current.TextRecipes.Select(r => new TextRecipeAction(r, PureTextOperations())));
         if (category == ActionCategory.Context)
-            actions.AddRange(userActions.Where(a => !IsScriptAction(a)).Select(a => new UserActions.UserRecipeAction(a)));
+            actions.AddRange(userActions.Where(a => !IsScriptAction(a)).Select(a => new UserRecipeAction(a)));
         if (category == ActionCategory.Transform)
-            actions.AddRange(userActions.Where(a => IsScriptAction(a)).Select(a => new UserActions.UserScriptAction(a)));
+            actions.AddRange(userActions.Where(a => IsScriptAction(a)).Select(a => new UserScriptAction(a)));
         return actions;
     }
 
     /// <summary>脚本动作判定：Code 内嵌或 ScriptFile 独立文件任一非空即为脚本动作。</summary>
-    private static bool IsScriptAction(Config.UserAction ua) =>
-        !string.IsNullOrWhiteSpace(ua.Code) || !string.IsNullOrWhiteSpace(ua.ScriptFile);
+    private static bool IsScriptAction(UserAction ua)
+    {
+        return !string.IsNullOrWhiteSpace(ua.Code) || !string.IsNullOrWhiteSpace(ua.ScriptFile);
+    }
 
     // Text transformation helpers
-    private static string ToTitleCase(string text) =>
+    private static string ToTitleCase(string text)
+    {
         // InvariantCulture, not CurrentCulture — Turkish (and similar) locales would otherwise
         // turn "Hello" into "Helloİ" via the dotted-I rule, which is surprising for English text.
-        System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(
             text.ToLowerInvariant());
+    }
 
     // All four helpers use the *Invariant case ops, matching ToTitleCase above. The parameterless
     // ToLower()/char.ToUpper(char) overloads are CurrentCulture-sensitive and corrupt identifiers
@@ -296,16 +317,20 @@ public partial class ActionRegistry
         return string.Concat(words.Select(w => char.ToUpperInvariant(w[0]) + w[1..].ToLowerInvariant()));
     }
 
-    private static string ToSnakeCase(string text) =>
-        string.Join('_', SplitWords(text).Select(w => w.ToLowerInvariant()));
+    private static string ToSnakeCase(string text)
+    {
+        return string.Join('_', SplitWords(text).Select(w => w.ToLowerInvariant()));
+    }
 
-    private static string ToKebabCase(string text) =>
-        string.Join('-', SplitWords(text).Select(w => w.ToLowerInvariant()));
+    private static string ToKebabCase(string text)
+    {
+        return string.Join('-', SplitWords(text).Select(w => w.ToLowerInvariant()));
+    }
 
     private static string ReverseGraphemes(string text)
     {
         // Iterate Unicode text elements so emoji and combining marks survive
-        var enumerator = System.Globalization.StringInfo.GetTextElementEnumerator(text);
+        var enumerator = StringInfo.GetTextElementEnumerator(text);
         var stack = new Stack<string>();
         while (enumerator.MoveNext())
             stack.Push((string)enumerator.Current);
@@ -314,7 +339,7 @@ public partial class ActionRegistry
 
     private static string Hash(Func<byte[], byte[]> hashFn, string text)
     {
-        var bytes = hashFn(System.Text.Encoding.UTF8.GetBytes(text));
+        var bytes = hashFn(Encoding.UTF8.GetBytes(text));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
@@ -337,20 +362,29 @@ public partial class ActionRegistry
         //   2. upper-after-upper but followed by lower ("XMLHttpRequest" → "XML" | "Http" | "Request")
         // Without rule 2, "XMLHttpRequest" would split as "XMLHttp" + "Request".
         var result = new List<string>();
-        var current = new System.Text.StringBuilder();
+        var current = new StringBuilder();
 
-        for (int i = 0; i < text.Length; i++)
+        for (var i = 0; i < text.Length; i++)
         {
-            char c = text[i];
+            var c = text[i];
             if (c == ' ' || c == '_' || c == '-' || c == '.')
             {
-                if (current.Length > 0) { result.Add(current.ToString()); current.Clear(); }
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
             }
             else if (i > 0 && char.IsUpper(c) &&
                      (char.IsLower(text[i - 1]) ||
                       (i + 1 < text.Length && char.IsLower(text[i + 1]))))
             {
-                if (current.Length > 0) { result.Add(current.ToString()); current.Clear(); }
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+
                 current.Append(c);
             }
             else
@@ -358,14 +392,16 @@ public partial class ActionRegistry
                 current.Append(c);
             }
         }
+
         if (current.Length > 0) result.Add(current.ToString());
         return result.Where(w => w.Length > 0).ToArray();
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"[\r\n]+")]
-    private static partial System.Text.RegularExpressions.Regex MyRegex();
-    [System.Text.RegularExpressions.GeneratedRegex(@" {2,}")]
-    private static partial System.Text.RegularExpressions.Regex MyRegex1();
+    [GeneratedRegex(@"[\r\n]+")]
+    private static partial Regex MyRegex();
+
+    [GeneratedRegex(@" {2,}")]
+    private static partial Regex MyRegex1();
 }
 
 public record ActionGroup(string Name, string IconKey, List<IAction> Actions);
