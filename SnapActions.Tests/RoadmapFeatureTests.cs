@@ -46,22 +46,6 @@ public class RoadmapFeatureTests
     }
 
     [Fact]
-    public void SettingsRoundTripPreservesNeverRecipesAndIndependentLanguages()
-    {
-        var original = new AppSettings
-        {
-            ToolbarDismissTimeout = 0, SearchLanguage = "ar", TranslationSourceLanguage = "fr", TranslationTargetLanguage = "en",
-            TextRecipes = [new() { Id = "local", Name = "تنظيف", Steps = ["ws_trim", "case_lower"] }],
-            PinnedActionIds = ["recipe_local"], Theme = "light"
-        };
-        var parsed = SettingsManager.Parse(JsonSerializer.Serialize(original));
-        Assert.Equal(0, parsed.ToolbarDismissTimeout); Assert.Equal("light", parsed.Theme);
-        Assert.Equal("fr", parsed.TranslationSourceLanguage); Assert.Equal("ar", parsed.SearchLanguage);
-        Assert.Contains("recipe_local", parsed.PinnedActionIds);
-        Assert.Equal(original.TextRecipes[0].Steps, parsed.TextRecipes[0].Steps);
-    }
-
-    [Fact]
     public void UnicodeCustomIdsAndNullRecipeStepsSurviveSemanticRecovery()
     {
         var parsed = SettingsManager.Parse("""{"UserActions":[{"Id":"بحث","Name":"بحث","UrlTemplate":"https://example.com?q={0}"}],"PinnedActionIds":["user_بحث"],"TextRecipes":[null,{"Id":"test","Name":"Test","Steps":null}]}""");

@@ -266,11 +266,10 @@ public class AppSettings
     public bool ShowTranslateActions { get; set; } = true;
     public bool ShowTransformActions { get; set; } = true;
     public bool ShowEncodeActions { get; set; } = true;
-    public bool ShowSurroundActions { get; set; } = true;
     public bool ShowSearchActions { get; set; } = true;
 
     /// <summary>Language code for search filtering (e.g. "en", "ar", "ja", ""). Empty = no filter.</summary>
-    public string SearchLanguage { get; set; } = "";
+    // public string SearchLanguage { get; set; } = "";
     public string ExcludeRegex { get; set; } = "";
     public string TranslationSourceLanguage { get; set; } = "";
     /// <summary>When true, the translation source defaults to the Windows display language

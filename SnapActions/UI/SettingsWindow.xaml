@@ -319,7 +319,7 @@
 
                                 </StackPanel>
                             </Expander>
-                            
+
                         </StackPanel>
                     </ScrollViewer>
                     <ScrollViewer x:Name="ActionsPage" Visibility="Collapsed"
@@ -375,11 +375,11 @@
 
                             <!-- Search Engines -->
                             <Expander Header="启用搜索" Style="{StaticResource WpfUiExpanderStyle}">
-                                <StackPanel x:Name="SearchEnginesPanel" Margin="0,0,0,4"/>
+                                <StackPanel x:Name="SearchEnginesPanel" Margin="0,0,0,4" />
                             </Expander>
-                            
+
                             <!-- Add custom search engine -->
-                            <ui:Card Style="{StaticResource WpfUiCardStyle}">   
+                            <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="添加自定义搜索" Style="{StaticResource WpfUiTextBlockStyle}" />
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
@@ -471,7 +471,8 @@
                                 </StackPanel>
                             </Expander>
 
-                            <Expander x:Name="BaiduExpander" Header="百度翻译凭据" Style="{StaticResource WpfUiExpanderStyle}">
+                            <Expander x:Name="BaiduExpander" Header="百度翻译凭据"
+                                      Style="{StaticResource WpfUiExpanderStyle}">
                                 <StackPanel>
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
                                         <TextBlock Text="APP ID"
@@ -500,15 +501,15 @@
                                     <DockPanel Style="{StaticResource SettingRowStyle}">
                                         <TextBlock Text=""
                                                    DockPanel.Dock="Left"
-                                                   Style="{StaticResource WpfUiTextBlockStyle}" /> 
+                                                   Style="{StaticResource WpfUiTextBlockStyle}" />
                                         <ui:Button DockPanel.Dock="Right" Content="申请百度翻译凭据"
                                                    Style="{StaticResource WpfUiButtonStyle}"
-                                                   Click="ApplyForBaiduTranslate_Click" 
+                                                   Click="ApplyForBaiduTranslate_Click"
                                                    HorizontalAlignment="Right" />
                                     </DockPanel>
                                 </StackPanel>
                             </Expander>
-                            
+
                             <TextBlock Text="自定义翻译" Style="{StaticResource TitleText}" Margin="0,20,0,0" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
@@ -574,9 +575,7 @@
                                     <DockPanel Margin="0,0,0,4">
                                         <ui:Button DockPanel.Dock="Right" Content="添加正在运行的应用程序..."
                                                    Style="{StaticResource WpfUiButtonStyle}"
-                                                   Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
-                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                                   BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                                                   Margin="5,0 0,0"
                                                    Click="AddRunningApp_Click" Cursor="Hand" />
                                         <TextBlock Text="每行一个进程名称"
                                                    FontSize="12"

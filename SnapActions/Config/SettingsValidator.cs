@@ -18,7 +18,7 @@ internal static class SettingsValidator
         s.TextRecipes = s.TextRecipes.Where(r => r != null && ValidId(r.Id) && !string.IsNullOrWhiteSpace(r.Name))
             .DistinctBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var recipe in s.TextRecipes) recipe.Steps = (recipe.Steps ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
-        s.SearchLanguage ??= "";
+        // s.SearchLanguage ??= "";
         s.ExcludeRegex ??= "";
         s.TranslationSourceLanguage = LanguageOptions.IsSupported(s.TranslationSourceLanguage) ? s.TranslationSourceLanguage : "";
         s.TranslationTargetLanguage = LanguageOptions.IsSupported(s.TranslationTargetLanguage) ? s.TranslationTargetLanguage : "en";
