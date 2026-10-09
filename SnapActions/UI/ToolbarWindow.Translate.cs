@@ -20,6 +20,9 @@ public partial class ToolbarWindow
     private string _translateText = "";
     private CancellationTokenSource? _translateLifetime;
     private bool _translateBusy;
+    // 交换源/目标语言期间为 true：两个下拉都要改，若不抑制，逐个赋值会各触发一次
+    // SelectionChanged → 在"目标尚未交换"的中间态抢先发起翻译，且把真正要跑的那次挡掉。
+    private bool _swappingLanguages;
     // 替换原文的互斥门：翻译弹层打开时工具栏的 ActionGate 已被点翻译按钮占用，
     // 替换用独立门防止连点/重复注入（语义与 ResultPopup._applyGate 一致）。
     private readonly OperationActionGate _translateApplyGate = new();
@@ -28,7 +31,6 @@ public partial class ToolbarWindow
     {
         TranslateSourceCombo.ItemsSource = new[]
         {
-            new LanguageOption("", "检测语言"),
             new LanguageOption("system", "Windows显示语言"),
         }.Concat(LanguageOptions.All);
         TranslateTargetCombo.ItemsSource = LanguageOptions.All;
@@ -229,9 +231,37 @@ public partial class ToolbarWindow
         TranslateStatusText.Visibility = Visibility.Visible;
     }
 
+    private async void TranslateSwapLanguages_Click(object sender, RoutedEventArgs e)
+    {
+        var oldSource = TranslateSourceCombo.SelectedValue as string ?? "";
+        var oldTarget = TranslateTargetCombo.SelectedValue as string ?? "en";
+
+        // 交换期间抑制 SelectionChanged：两个下拉都要改，逐个触发会各跑一次翻译。
+        _swappingLanguages = true;
+        try
+        {
+            TranslateSourceCombo.SelectedValue = oldTarget;
+            // 目标下拉只有 LanguageOptions.All，不含 "system"；原源是系统语言时
+            // 落成它的显示语言码，否则 SelectedValue 会因找不到项变成 null。
+            TranslateTargetCombo.SelectedValue = oldSource == "system" ? SystemDisplayTarget() : oldSource;
+        }
+        finally
+        {
+            _swappingLanguages = false;
+        }
+
+        var rawFrom = TranslateSourceCombo.SelectedValue as string ?? "";
+        var from = rawFrom == "system" ? SystemDisplayTarget() : rawFrom; // "" → auto-detect, sent as-is
+        var to = TranslateTargetCombo.SelectedValue as string ?? "en";
+        PersistSelection(rawFrom, from, to); // 第 3 参是交换后的目标语言
+        SettingsManager.Save();
+        await TranslateAsync();
+    }
+
     private async void TranslateLanguage_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (IsLoaded && TranslatePopup.IsOpen && !_translateBusy) await TranslateAsync(true);
+        if (!_swappingLanguages && IsLoaded && TranslatePopup.IsOpen && !_translateBusy)
+            await TranslateAsync(true);
     }
 
     private async void TranslateRetry_Click(object sender, RoutedEventArgs e)

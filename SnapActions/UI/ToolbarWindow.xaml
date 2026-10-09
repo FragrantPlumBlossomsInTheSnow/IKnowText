@@ -275,8 +275,12 @@
                             <ComboBox x:Name="TranslateSourceCombo" Width="120" Height="30" Padding="12,5"
                                       DisplayMemberPath="Name" SelectedValuePath="Code"
                                       SelectionChanged="TranslateLanguage_Changed" />
-                            <TextBlock Text="→" VerticalAlignment="Center" Margin="8,0"
-                                       FontSize="14" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <Button x:Name="TranslateSwapButton" Width="30" Height="30" Padding="5"
+                                    Click="TranslateSwapLanguages_Click" Cursor="Hand"
+                                    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                    BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                                <modern:FontIcon Glyph="{x:Static local:IconGlyphs.Swap}" FontSize="14" />
+                            </Button>
                             <ComboBox x:Name="TranslateTargetCombo" Width="120" Height="30" Padding="12,5"
                                       DisplayMemberPath="Name" SelectedValuePath="Code"
                                       Margin="0,0,8,0" SelectionChanged="TranslateLanguage_Changed" />

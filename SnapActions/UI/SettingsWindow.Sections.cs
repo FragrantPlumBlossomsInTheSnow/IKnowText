@@ -19,7 +19,6 @@ public partial class SettingsWindow
         SelectComboByTag(ThemeCombo, s.Theme, 0);
         TranslationSourceCombo.ItemsSource = new[]
         {
-            new LanguageOption("", "检测语言"),
             new LanguageOption("system", "Windows显示语言"),
         }.Concat(LanguageOptions.All);
         TranslationTargetCombo.ItemsSource = new[] { new LanguageOption("", "Windows显示语言") }.Concat(LanguageOptions.All);

@@ -20,7 +20,7 @@ public static class IconGlyphs
 
     // 结果弹出/翻译卡 chrome
     public const string Close     = "\uE711";  // Close (X)
-    public const string Swap      = "\uE8AB";  // Translate direction / convert
+    public const string Swap      = "\uE8AB";  // Translate direction / convert 
     public const string Retry     = "\uE72C";  // Retry
     public const string Replace   = "\uE70F";  // Replace
     public const string Pin       = "\uE77A";  // Pin — 图钉（阻止自动关闭）
