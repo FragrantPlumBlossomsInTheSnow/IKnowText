@@ -8,7 +8,7 @@
 
 A Windows selection toolbar that appears when you select text — an independent, Chinese-localised build of SnapActions v2.4.5 (Baidu Translate instead of Google + WebView2, plus user-defined JavaScript actions).
 
-仓库 <https://github.com/XuejiMeixiangli/IKnowText> · 详细文档：[用户指南](docs/user-guide.md)
+仓库 <https://github.com/FragrantPlumBlossomsInTheSnow/IKnowText> · 详细文档：[用户指南](docs/user-guide.md)
 
 
 ![工具栏](docs/images/use-zh.png)
@@ -38,8 +38,7 @@ A Windows selection toolbar that appears when you select text — an independent
 
 需要 .NET SDK **10.0.400**（`global.json` 锁定）；完整打包另需 Python 3.11+。
 
-```bat
-git clone https://github.com/XuejiMeixiangli/IKnowText.git
+```batgit clone https://github.com/FragrantPlumBlossomsInTheSnow/IKnowText.git
 
 :: 构建
 dotnet build SnapActions\SnapActions.csproj -c Release
@@ -62,7 +61,7 @@ SnapActions\build.bat
 | [发布说明](docs/releases) | 各版本变更 |
 | [LICENSE](LICENSE) | MIT；原版权归 [roko-tech](https://github.com/roko-tech)，改造部分归本仓库作者 |
 
-**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。首次启动时会自动从改名前的 `%APPDATA%\SnapActions` 迁移设置与脚本，旧目录保留不删。用环境变量 `IKNOWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
+**数据目录**：`%APPDATA%\IKnowText` —— `settings.json`（含加密后的凭据）、`scripts\`（脚本源码）、`logs\`（按天日志，保留 7 天）。用环境变量 `IKNOWTEXT_DATA_DIR` 可指向其它目录，用于多实例或隔离自测。
 
 ## English
 
