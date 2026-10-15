@@ -252,7 +252,7 @@
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
                                     <Border Style="{StaticResource SettingDivider}" />
                                     <CheckBox x:Name="UseSyntheticKeys"
-                                              Content="允许发送合成键"
+                                              Content="允许发送合成键（需要配合白名单）"
                                               ToolTip="启用此选项后，会使用合成按键保证工具栏能够在大部分情况下弹出，但会短暂修改你的剪切板，也会影响部分程序的使用体验"
                                               Style="{StaticResource SettingCheckBoxStyle}"
                                               Checked="Setting_Changed" Unchecked="Setting_Changed" />
@@ -534,7 +534,6 @@
                     <ScrollViewer x:Name="CustomPage" Visibility="Collapsed"
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="16">
-                            <!-- 自定义操作（UserRecipeAction）已停用：设置入口移除，功能默认关闭。 -->
 
                             <TextBlock Text="文本转换方案" Style="{StaticResource TitleText}" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
@@ -552,7 +551,7 @@
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
                                 <StackPanel>
                                     <TextBlock TextWrapping="Wrap"
-                                               Text="使用Javascript自定义专属的文本转换脚本" />
+                                               Text="使用Javascript自定义复杂的文本转换脚本" />
                                     <StackPanel x:Name="ScriptActionsPanel" Margin="0,8" />
                                     <ui:Button Content="添加脚本动作" HorizontalAlignment="Left"
                                                Style="{StaticResource WpfUiButtonStyle}"
@@ -566,7 +565,7 @@
                         <StackPanel Margin="16">
                             <!-- Excluded Apps -->
                             <TextBlock Text="排除的应用程序" Style="{StaticResource TitleText}" />
-                            <TextBlock Text="建议将游戏排除" FontSize="12"
+                            <TextBlock Text="加入你不希望弹出工具栏的程序" FontSize="12"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        VerticalAlignment="Center" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
@@ -590,8 +589,8 @@
                                                 AutomationProperties.Name="ExcludedAppsBox" />
                                 </StackPanel>
                             </ui:Card>
-                            <TextBlock Text="合成兜底白名单" Style="{StaticResource TitleText}" />
-                            <TextBlock Text="只有进入白名单的程序才会触发合成键兜底" FontSize="12"
+                            <TextBlock Text="合成键白名单" Style="{StaticResource TitleText}" />
+                            <TextBlock Text="只有加入白名单的程序才会触发「发送合成键」" FontSize="12"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        VerticalAlignment="Center" />
                             <ui:Card Style="{StaticResource WpfUiCardStyle}">
