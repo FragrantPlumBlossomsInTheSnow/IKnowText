@@ -1,6 +1,4 @@
-﻿﻿﻿using System.Collections.Generic;
-using System.Linq;
-using SnapActions.Actions;
+﻿using SnapActions.Actions;
 using SnapActions.Actions.UserActions;
 using SnapActions.Config;
 using SnapActions.Detection;
